@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Project1B · Recording Library</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Project1B home"><span class="brand-mark">1B</span><span>Project1B <small>RECORDING LIBRARY</small></span></a>
+    <div class="account"><span class="internal-label">Internal</span><span id="user-name" hidden></span><button id="logout" class="button ghost" hidden>Sign out</button></div>
+  </header>
+  <main>
+    <section id="login-view" class="login-layout">
+      <div class="intro">
+        <p class="eyebrow">FROM CAPTURE TO RESEARCH</p>
+        <h1>The complete recording.<br>Ready for your next step.</h1>
+        <p class="intro-copy">Find recordings, inspect their captured files, and download the original upload in one ZIP.</p>
+        <div class="bundle-illustration" aria-hidden="true"><div class="bundle-top"><span class="file-mark">ZIP</span><span>Original recording bundle</span><span class="bundle-dot"></span></div><div class="bundle-row"><span>MP4</span>Video recordings<i>01</i></div><div class="bundle-row"><span>MCAP</span>Captured sensor data<i>02</i></div><div class="bundle-row"><span>JSON</span>Session metadata<i>03</i></div></div>
+        <p class="quiet">Files depend on what the device captured and uploaded.</p>
+      </div>
+      <form id="login-form" class="login-card">
+        <span class="eyebrow">STAFF ACCESS</span>
+        <h2>Welcome back</h2>
+        <p>Sign in with your existing Project1B staff account.</p>
+        <label for="identifier">Email, username, or phone</label>
+        <input id="identifier" name="username" autocomplete="username" required maxlength="254" placeholder="Your account">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <p id="login-error" class="error" role="alert" hidden></p>
+        <button id="login-button" class="button primary" type="submit">Sign in</button>
+        <p class="login-note">This sample requires an account with admin access.</p>
+      </form>
+    </section>
+    <section id="library-view" hidden>
+      <div class="page-heading"><div><p class="eyebrow">YOUR DATA WORKSPACE</p><h1>Recording library</h1><p>Browse captures. Download the full original upload.</p></div><button id="refresh" class="button secondary">Refresh library</button></div>
+      <div class="toolbar"><label class="search-label" for="search">Search<input id="search" type="search" placeholder="Worker, task, recording ID…"></label><label for="status-filter">Status<select id="status-filter"><option value="">All statuses</option><option value="uploaded">Uploaded</option><option value="cutting">Cutting</option><option value="captioning">Captioning</option><option value="qc">QC</option><option value="exported">Exported</option><option value="rejected">Rejected</option><option value="pending_upload">Pending upload</option></select></label><span class="view-label">Original files · Read only</span></div>
+      <p id="library-notice" class="notice" role="status" hidden></p>
+      <div class="workspace"><section class="recordings-panel" aria-label="Recordings"><div class="panel-heading"><h2>Recordings</h2><span id="recording-count" class="quiet"></span></div><p id="list-state" class="empty-state" role="status">Loading recordings…</p><div id="recording-list"></div><p class="list-note">Search covers the latest 500 recordings in the selected status.</p></section><section id="recording-detail" class="detail-panel" aria-label="Recording details" aria-live="polite"><div class="empty-detail"><span class="empty-icon">1B</span><h2>Select a recording</h2><p>See its video, session files, and original bundle.</p></div></section></div>
+    </section>
+    <noscript>This site requires JavaScript to sign in and browse recordings.</noscript>
+  </main>
+  <footer>Project1B · Internal recording access <span>Original uploads, preserved as captured.</span></footer>
+</body>
+</html>
