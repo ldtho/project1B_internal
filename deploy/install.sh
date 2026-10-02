@@ -89,6 +89,22 @@ if [ "$RENEWED_LINEAGE" = /etc/letsencrypt/live/internal.project1b.space ]; then
 fi
 HOOK
 chmod 755 /etc/letsencrypt/renewal-hooks/deploy/project1b-internal-reload
-curl --fail --silent --show-error --resolve "$domain:443:127.0.0.1" "https://$domain/" -o /dev/null
+# Wait for the new workers: systemctl reload only sends a signal to Nginx.
+ready=false
+for attempt in {1..15}; do
+    if curl --fail --silent --show-error --connect-timeout 1 --max-time 2 \
+        --resolve "$domain:443:127.0.0.1" "https://$domain/" \
+        -o "$backup/health.html" 2>"$backup/health.error" \
+        && cmp -s "$repo/web/index.html" "$backup/health.html"; then
+        ready=true
+        break
+    fi
+    sleep 1
+done
+if ! $ready; then
+    cat "$backup/health.error" >&2
+    echo "Nginx did not serve the expected internal site before the readiness deadline." >&2
+    false
+fi
 trap - ERR
 echo "DEPLOYED https://$domain/"

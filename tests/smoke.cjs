@@ -11,7 +11,7 @@ const scratch = '/mnt/SSD5/.codex-ui-validation';
 fs.mkdirSync(scratch, { recursive: true });
 const tmp = fs.mkdtempSync(path.join(scratch, 'smoke-'));
 let expired = false, maliciousTitle = false, csrfChecked = false, refuseBundle = false;
-let browser, nginx, nginxLog = '';
+let browser, nginx, reloadTimer, nginxLog = '';
 const video = { pk: 42, video_id: 'phone/sample-session', status: 'uploaded', worker: 'Example Researcher', task: 'Organize tools', duration_s: 84, uploaded_at: '2026-10-02T02:00:00Z' };
 const other = { ...video, pk: 77, task: 'Inspect equipment', status: 'rejected' };
 const zip = execFileSync('python3', ['-c', "import io,zipfile,sys; b=io.BytesIO(); z=zipfile.ZipFile(b,'w'); z.writestr('video.mp4',b'video fixture'); z.writestr('capture.mcap',b'mcap fixture'); z.writestr('metadata.json',b'{}'); z.close(); sys.stdout.buffer.write(b.getvalue())"]);
@@ -73,6 +73,25 @@ function request(url, method = 'GET') { return new Promise((resolve, reject) => 
   assert.equal(await request(`${base}/api/admin/videos/42`, 'POST'), 403);
   assert.equal(await request(`${base}/api/admin/videos/42/review`, 'POST'), 404);
   assert.equal(await request(`${base}/api/auth/signup`, 'POST'), 404);
+  // Reproduce the first deploy: TLS still serves the old hostname until reload finishes.
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=internal.project1b.space', '-addext', 'subjectAltName=DNS:internal.project1b.space', '-keyout', `${tmp}/new-key.pem`, '-out', `${tmp}/new-cert.pem`], { stdio: 'ignore' });
+  fs.writeFileSync(`${tmp}/trusted.pem`, fs.readFileSync(`${tmp}/cert.pem`) + fs.readFileSync(`${tmp}/new-cert.pem`));
+  const installer = fs.readFileSync(path.join(repo, 'deploy/install.sh'), 'utf8');
+  const health = installer.slice(installer.indexOf('# Wait for the new workers:'), installer.indexOf('trap - ERR\necho'))
+    .replace('$domain:443:127.0.0.1', `$domain:${tlsPort}:127.0.0.1`)
+    .replace('https://$domain/', `https://$domain:${tlsPort}/`);
+  const checking = spawn('bash', ['-e'], { env: { ...process.env, domain: 'internal.project1b.space', repo, backup: tmp, SMOKE_CA: `${tmp}/trusted.pem` }, stdio: ['pipe', 'ignore', 'pipe'] });
+  let checkError = ''; checking.stderr.on('data', data => { checkError += data; });
+  const checked = new Promise((resolve, reject) => checking.on('exit', code => code === 0 ? resolve() : reject(new Error(`Reload readiness failed: ${checkError}`))));
+  checking.stdin.end('curl() { command curl --noproxy "*" --cacert "$SMOKE_CA" "$@"; }\n' + health);
+  reloadTimer = setTimeout(() => {
+    fs.copyFileSync(`${tmp}/new-cert.pem`, `${tmp}/cert.pem`);
+    fs.copyFileSync(`${tmp}/new-key.pem`, `${tmp}/key.pem`);
+    nginx.kill('SIGHUP');
+  }, 250);
+  await checked;
+  console.log('PASS: installer waits through old TLS certificate and asynchronous Nginx reload, then verifies exact page.');
+  if (process.argv.includes('--readiness-only')) return;
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ ignoreHTTPSErrors: true, acceptDownloads: true, viewport: { width: 1365, height: 1000 } });
   const page = await context.newPage();
@@ -118,6 +137,7 @@ function request(url, method = 'GET') { return new Promise((resolve, reject) => 
   assert.equal(await page.locator('.recording-row').count(), 0); assert.deepEqual(errors, []);
   console.log('PASS: login, role gate, search, ZIP with MCAP, download error, missing bundle, safe text, CSRF logout, expiry, mobile layout, Nginx write restrictions.');
 })().catch(error => { console.error(error); console.error(nginxLog.slice(-1800)); process.exitCode = 1; }).finally(async () => {
+  clearTimeout(reloadTimer);
   if (browser) await browser.close();
   if (nginx && nginx.exitCode === null) { const exit = new Promise(resolve => nginx.once('exit', resolve)); nginx.kill('SIGTERM'); await exit; }
   await new Promise(resolve => api.close(resolve));
