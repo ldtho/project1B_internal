@@ -479,6 +479,8 @@
       <span><kbd>a</kbd></span><span>add caption in the gap after it</span>
       <span><kbd>⇧M</kbd></span><span>merge with the next</span>
       <span><kbd>c</kbd></span><span>cut at the playhead</span>
+      <span><kbd>e</kbd></span><span>trim current caption's end to playhead</span>
+      <span><kbd>p</kbd></span><span>extend previous caption to playhead; move current start if needed</span>
       <span><kbd>o</kbd></span><span>end → playhead, then the next caption</span>
       <span><kbd>⌫</kbd></span><span>delete</span>
       <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>⇧Z</kbd></span><span>undo / redo</span>
@@ -986,7 +988,7 @@ function renderView(e, d, t0, sel0) {
     $('#selWarn').innerHTML = dups.length ? `⚠ duplicated ${dups.map(([t, n]) => `${esc(t)} ×${n}`).join(', ')}: keep one clause per hand<div class="prev">${hands(text, true)}</div>` : '';
     if (!EDIT) { $('#selTx').innerHTML = s.l === 'atoms' ? hands(text, true) : esc(text); return; }
     const inp = $('#selIn');
-    if (document.activeElement !== inp) inp.value = text;
+    if (inp.value !== text) inp.value = text;
     inp.classList.toggle('dup', dups.length > 0);
     if (s.l === 'ins') return;
     const gap = (next ? next.start : END) - x.end;
@@ -1133,6 +1135,16 @@ function renderView(e, d, t0, sel0) {
     if (op === 'sugg') { saveState(); x.text = x.check.new; return changed(); }
     if (op === 's') return setT(l, k, 'start', t);
     if (op === 'e') return setT(l, k, 'end', t);
+    if (op === 'extend') {
+      const next = arr[k + 1], stop = Math.min(t, next ? next.end - 0.1 : END);
+      if (stop <= x.end + 1e-9) return msg(`move the playhead after the end of ${name} first`, true);
+      saveState();
+      x.end = grid(stop);
+      if (next && next.start < x.end) next.start = x.end;
+      changed();
+      if (stop < t) msg(`${name}: stopped before the next caption's end to keep 0.1 s`);
+      return;
+    }
     if (op === 'cut') {
       if (!(t > x.start && t < x.end)) return msg(`move the playhead inside ${name} first`, true);
       saveState();
@@ -1393,6 +1405,18 @@ function renderView(e, d, t0, sel0) {
       return false;
     }
     if (mod || ev.altKey || (ev.key === 'Enter' && ev.target.matches('button'))) return false;
+    if (key === 'e' || key === 'p') return done(() => {
+      if (ev.repeat) return;
+      const l = PLAY && PLAY.l !== 'ins' ? PLAY.l : EDIT.atoms.length ? 'atoms' : 'subs', arr = EDIT[l];
+      const k = arr.findIndex(x => v.currentTime >= x.start && v.currentTime < x.end);
+      if (key === 'e') {
+        if (k < 0) return msg('move the playhead inside a timed caption first', true);
+        return run('e', l, k);
+      }
+      const prev = k >= 0 ? k - 1 : arr.findLastIndex(x => x.end <= v.currentTime);
+      if (prev < 0) return msg('no previous caption at this level', true);
+      run('extend', l, prev);
+    });
     const s = cur(), l = s ? s.l : 'atoms', arr = EDIT[l];
     const need = f => s ? f(s.k) : msg('select a line first: click it on the timeline or in the table', true);
     if (key === 'c') return done(() => {
@@ -1417,7 +1441,17 @@ function renderView(e, d, t0, sel0) {
 }
 
 document.addEventListener('keydown', ev => {
+  if (ev.key !== ' ' || ev.ctrlKey || ev.metaKey || ev.altKey || !$('#guide').hidden
+      || ev.target.closest('input, select, textarea') || ev.target.isContentEditable) return;
+  const v = document.querySelector('#videos video');
+  if (!v) return;
+  ev.preventDefault(); ev.stopPropagation();
+  if (!ev.repeat) v.paused ? v.play().catch(() => {}) : v.pause();
+}, true);   // intercept before native video controls handle Space a second time
+
+document.addEventListener('keydown', ev => {
   if (!$('#guide').hidden && (ev.key === 'Escape' || ev.key === '?')) { ev.preventDefault(); return guide(false); }
+  if (!$('#guide').hidden) return;
   if (EDITKEY && EDITKEY(ev)) return;
   if (ev.target.matches('input, select, textarea') || ev.ctrlKey || ev.metaKey || ev.altKey) return;
   const v = document.querySelector('#videos video'), d = CUR && DETAIL.get(CUR.id);
@@ -1439,7 +1473,6 @@ document.addEventListener('keydown', ev => {
     ev.preventDefault(); v.pause();
     v.currentTime = Math.max(0, grid(grid(v.currentTime) + (key === 'ArrowRight' ? 1 : -1) * (ev.shiftKey ? 0.5 : 0.1)));
   }
-  else if (key === ' ' && v && ev.target.tagName !== 'VIDEO') { ev.preventDefault(); v.paused ? v.play() : v.pause(); }
 });
 
 // The guide: how to view and edit, every key. ? or the Guide button opens it; Esc, ? or a click outside closes it.

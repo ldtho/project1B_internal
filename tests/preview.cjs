@@ -72,6 +72,54 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     const video = document.querySelector('video'); video.pause(); video.currentTime = time;
     video.dispatchEvent(new Event('timeupdate'));
   }, time);
+  const draft = () => page.evaluate(() => JSON.parse(JSON.stringify({ ins: EDIT.ins, subs: EDIT.subs, atoms: EDIT.atoms })));
+  await seek(duration * 0.1);
+  await page.locator('video').focus();
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => !document.querySelector('video').paused);
+  await page.evaluate(() => document.querySelector('video').dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', repeat: true, bubbles: true })));
+  assert.equal(await page.locator('video').evaluate(video => video.paused), false);
+  await page.keyboard.press('Space');
+  assert.equal(await page.locator('video').evaluate(video => video.paused), true);
+  await seek(duration * 0.1);
+  const originalDraft = await draft();
+  await page.keyboard.press('e');
+  assert.equal((await draft()).atoms[0].end, Math.round(duration * 0.1 * 10) / 10);
+  assert.equal((await draft()).atoms.length, 2);
+  assert.equal(await page.locator('#selIn').inputValue(), 'Subtask fixture');
+  await page.keyboard.press('Control+z');
+  assert.deepEqual(await draft(), originalDraft);
+  await seek(duration * 0.4);
+  await page.keyboard.press('p');
+  const extended = await draft();
+  assert.equal(extended.atoms[0].end, Math.round(duration * 0.4 * 10) / 10);
+  assert.equal(extended.atoms[1].start, extended.atoms[0].end);
+  assert.equal(extended.atoms[0].text, originalDraft.atoms[0].text);
+  assert.equal(extended.atoms[1].text, originalDraft.atoms[1].text);
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Second action');
+  await page.keyboard.press('Control+z');
+  assert.deepEqual(await draft(), originalDraft);
+  await seek(duration * 0.499);
+  await page.keyboard.press('p');
+  assert.equal((await draft()).atoms[1].start, Math.round((duration * 0.5 - 0.1) * 10) / 10);
+  await page.keyboard.press('Control+z');
+  await seek(duration * 0.1);
+  await page.keyboard.press('p');
+  assert.deepEqual(await draft(), originalDraft);
+  await seek(duration * 0.3);
+  await page.keyboard.press('e');
+  assert.equal((await draft()).subs[0].end, Math.round(duration * 0.3 * 10) / 10);
+  assert.deepEqual((await draft()).atoms, originalDraft.atoms);
+  await page.keyboard.press('Control+z');
+  await seek(duration * 0.1);
+  await page.locator('#selIn').focus();
+  await page.keyboard.press('Space'); await page.keyboard.press('e'); await page.keyboard.press('p');
+  assert.equal(await page.locator('video').evaluate(video => video.paused), true);
+  assert.deepEqual((await draft()).atoms.map(x => [x.start, x.end]), originalDraft.atoms.map(x => [x.start, x.end]));
+  await page.keyboard.press('Control+z');
+  assert.deepEqual(await draft(), originalDraft);
+  await page.locator('video').focus();
+  assert.equal(await page.locator('#selIn').inputValue(), originalDraft.atoms[0].text);
   const synchronized = async (level, index, text) => {
     assert.equal(await page.locator('#selIn').inputValue(), text);
     assert.equal(await page.locator(`#levels tr[data-l="${level}"][data-k="${index}"] input.tx`).inputValue(), text);
@@ -215,7 +263,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     assert.equal((await context.request.get(`${base}/api/admin/videos`)).status(), 403);
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: mock login/roles; real video; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
+  console.log('PASS: mock login/roles; real video; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   try { if (restoreCaptions) await restoreCaptions(); }
   catch (error) { console.error(error); process.exitCode = 1; }
