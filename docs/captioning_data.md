@@ -306,6 +306,8 @@ Ask reviewers to save drafts before restart, then refresh their browsers. Assign
 
 Keyboard shortcuts (outside text/time fields): **Space** pauses/resumes video. In Edit mode, **E** trims the caption at the playhead to end there; **P** extends the preceding caption to the playhead, moving the current caption's start when needed to prevent overlap. Both use the current caption's level, keep at least 0.1 s per caption, and support **Ctrl/Cmd+Z** undo. **C** splits a caption into two. **E** follows the **move shared boundaries** setting; **P** moves the next start whenever needed. Changes remain drafts until saved.
 
+**Enter** pauses playback, enables Edit mode if needed, and focuses the selected annotation caption. **Up** moves that editor from atomic to sub-task to instruction, skipping missing sub-tasks. Instruction text is editable. **Enter/Escape** leaves the text field; seeking or resuming playback restores the caption at the playhead. Up/Down in table time fields still adjusts timing.
+
 Save without semantic changes marks a sample **confirmed**; a changed save marks it **corrected**. These are QA states, not separate administrator approvals.
 
 Select saved versions to inspect reviewer changes. **Before selected change** uses the state that reviewer started from; **Original captions** uses that revision's baseline. Editor and save time identify revisions. Comparison is read-only and does not restore the selected version into the editor.

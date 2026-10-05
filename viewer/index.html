@@ -397,6 +397,9 @@
     <li>The selected annotation follows the playhead: atomic caption, then sub-task, then instruction when timed captions are absent.
       Use <b>selected annotation</b> above the video to show or hide this area. Edits update it, the timeline, and video captions together.
       Qwen's check notes show flagged captions; the table below lists every caption under its sub-task.</li>
+    <li><kbd>Enter</kbd> pauses and opens the selected annotation for editing, enabling Edit mode when needed. <kbd>↑</kbd> moves the
+      editor to its sub-task, then instruction; missing sub-tasks are skipped. <kbd>Enter</kbd> or <kbd>Esc</kbd> leaves the text field.
+      Seeking or resuming playback restores the caption at the playhead.</li>
   </ul>
   <h4>Filters and flags</h4>
   <ul>
@@ -481,6 +484,7 @@
       <span><kbd>r</kbd></span><span>random episode</span>
       <span><kbd>/</kbd></span><span>search</span>
       <span><kbd>space</kbd></span><span>play / pause</span>
+      <span><kbd>Enter</kbd></span><span>pause and edit caption at playhead</span>
       <span><kbd>←</kbd> <kbd>→</kbd></span><span>0.1 s back / forward (<kbd>⇧</kbd> 0.5 s)</span>
       <span><kbd>j</kbd> <kbd>k</kbd></span><span>next / previous atomic line</span>
       <span><kbd>J</kbd> <kbd>K</kbd></span><span>next / previous sub-task</span>
@@ -488,7 +492,8 @@
       <span><kbd>?</kbd></span><span>this guide</span></div>
     <div class="kg"><b>Edit mode, on the selected caption</b>
       <span><kbd>[</kbd> <kbd>]</kbd></span><span>previous / next caption</span>
-      <span><kbd>Enter</kbd></span><span>edit its text (<kbd>Enter</kbd> / <kbd>Esc</kbd> leaves)</span>
+      <span><kbd>↑</kbd></span><span>edit parent in selected annotation: atomic → sub-task → instruction</span>
+      <span><kbd>Enter</kbd> / <kbd>Esc</kbd></span><span>leave caption text field</span>
       <span><kbd>a</kbd></span><span>add caption in the gap after it</span>
       <span><kbd>⇧M</kbd></span><span>merge with the next</span>
       <span><kbd>c</kbd></span><span>cut at the playhead</span>
@@ -898,9 +903,12 @@ function renderView(e, d, t0, sel0) {
   });
   v.playbackRate = RATE;
   if (t0) v.addEventListener('loadedmetadata', () => { v.currentTime = t0; }, { once: true });
-  let lastSub = -2, lastAtom = -2, PLAY = null;
+  let lastSub = -2, lastAtom = -2, PLAY = null, PANEL_LEVEL = null, panelTime = v.currentTime;
   const follow = (force = false) => {
     const t = v.currentTime, { ins, subs, atoms } = lv();
+    const returnToPlayhead = PANEL_LEVEL && t !== panelTime;
+    if (returnToPlayhead) PANEL_LEVEL = null;
+    panelTime = t;
     $('.tlwrap .head').style.left = `${100 * t / dur}%`;
     const si = subs.findIndex(s => t >= s.start && t < s.end);
     const ai = atoms.findIndex(a => t >= a.start && t < a.end);
@@ -908,7 +916,7 @@ function renderView(e, d, t0, sel0) {
     const switched = active?.l !== PLAY?.l || active?.k !== PLAY?.k;
     if (switched && active && active.l !== 'ins') SEL = active;
     PLAY = active;
-    if (si !== lastSub || ai !== lastAtom || switched || force === true) {
+    if (si !== lastSub || ai !== lastAtom || switched || returnToPlayhead || force === true) {
       lastSub = si; lastAtom = ai;
       document.querySelectorAll('[data-sub]').forEach(el => el.classList.toggle('active', +el.dataset.sub === si));
       document.querySelectorAll('[data-atom]').forEach(el => el.classList.toggle('active', +el.dataset.atom === ai));
@@ -969,8 +977,10 @@ function renderView(e, d, t0, sel0) {
   // buttons; the skeleton is rebuilt only when the playhead caption or
   // the mode changes, so typing in it survives the redraws its own keystrokes cause.
   let selKey = '';
+  const panelCaption = () => PANEL_LEVEL === 'ins' ? { l: 'ins', k: 0 }
+    : PANEL_LEVEL === 'subs' && lastSub >= 0 ? { l: 'subs', k: lastSub } : PLAY;
   const drawSel = () => {
-    const box = $('#selbox'), s = PLAY, L = lv();
+    const box = $('#selbox'), s = panelCaption(), L = lv();
     const key = s ? `${EDIT ? 'e' : 'v'}:${s.l}:${s.k}` : EDIT ? 'e' : 'v';
     if (key !== selKey) {
       selKey = key;
@@ -1239,17 +1249,18 @@ function renderView(e, d, t0, sel0) {
   });
   // #selbox: its buttons run on the selected line; its text field edits it (one undo step per focus, like the table's)
   $('#selbox').addEventListener('click', ev => {
-    const b = ev.target.closest('button[data-op]'), s = PLAY;
+    const b = ev.target.closest('button[data-op]'), s = panelCaption();
     if (b && EDIT && s) run(b.dataset.op, s.l, s.k);
   });
   $('#selbox').addEventListener('focusin', ev => {
     if (EDIT && ev.target.id === 'selIn') {
       EDIT.typing = false;
-      if (PLAY && PLAY.l !== 'ins') select(PLAY.l, PLAY.k);
+      const s = panelCaption();
+      if (s && s.l !== 'ins') select(s.l, s.k);
     }
   });
   $('#selbox').addEventListener('input', ev => {
-    const s = PLAY; if (!EDIT || !s || ev.target.id !== 'selIn') return;
+    const s = panelCaption(); if (!EDIT || !s || ev.target.id !== 'selIn') return;
     if (!EDIT.typing) { saveState(); EDIT.typing = true; }
     if (s.l === 'ins') EDIT.ins = ev.target.value; else EDIT[s.l][s.k].text = ev.target.value;
     const t = s.l === 'ins' ? $('#levels input[data-l="ins"]') : $(`#levels tr[data-l="${s.l}"][data-k="${s.k}"] input.tx`);
@@ -1268,6 +1279,23 @@ function renderView(e, d, t0, sel0) {
              atoms: d.atomic.map(a => ({ start: a.start, end: a.end, text: a.text })), version: d.version, dirty: false,
              undo: [], redo: [], typing: false };
     drawTable(); drawLanes();
+  };
+  const editCurrentCaption = (parent = false) => {
+    if (!canSave(e)) return;
+    v.pause();
+    if (!EDIT) {
+      EDITON = true; store('edmode', '1'); $('#edMode').checked = true; startEdit();
+    }
+    follow(true);
+    const s = panelCaption();
+    if (parent) PANEL_LEVEL = s?.l === 'atoms' && lastSub >= 0 ? 'subs' : 'ins';
+    else if (!s) PANEL_LEVEL = 'ins';
+    const toggle = $('#annotationToggle');
+    if (!toggle.checked) { toggle.checked = true; toggle.dispatchEvent(new Event('change')); }
+    const current = panelCaption();
+    if (current?.l === 'ins') SEL = null;
+    else if (current) SEL = current;
+    markSel(); editSel(); $('#selIn')?.scrollIntoView({ block: 'nearest' });
   };
   // Reset: the saved edits go through /api/revert (logged), unsaved ones are just dropped.
   const reset = () => {
@@ -1293,7 +1321,8 @@ function renderView(e, d, t0, sel0) {
   $('#guideBtn').addEventListener('click', () => guide(true));
   if (EDITON && canSave(e)) startEdit(); else { drawTable(); drawLanes(); }
   v.addEventListener('timeupdate', follow);
-  v.addEventListener('seeking', follow);
+  v.addEventListener('seeking', () => { PANEL_LEVEL = null; follow(true); });
+  v.addEventListener('play', () => { PANEL_LEVEL = null; follow(true); });
   v.addEventListener('seeked', follow);
   v.addEventListener('loadedmetadata', follow);
   v.addEventListener('timeupdate', keepHead);
@@ -1460,15 +1489,21 @@ function renderView(e, d, t0, sel0) {
   $('.title h2').addEventListener('click', () => { $('#q').value = e.task; search(); });
   // Edit-mode keys, after the review editor's; the document handler asks this first.
   EDITKEY = ev => {
-    if (!EDIT) return false;
+    if (ev.isComposing) return false;
     const inp = ev.target.closest('#levels input, #selbox input');
     if (!inp && ev.target.matches('input, select, textarea')) return false;
     const mod = ev.ctrlKey || ev.metaKey, key = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
     const done = f => { ev.preventDefault(); f(); return true; };
+    if (!EDIT) {
+      if (!inp && !mod && !ev.altKey && !ev.target.matches('button') && (key === 'Enter' || key === 'ArrowUp'))
+        return done(() => editCurrentCaption(key === 'ArrowUp'));
+      return false;
+    }
     if (mod && key === 'z') return done(() => ev.shiftKey ? undo(EDIT.redo, EDIT.undo, 'redo') : undo(EDIT.undo, EDIT.redo, 'undo'));
     if (mod && key === 'y') return done(() => undo(EDIT.redo, EDIT.undo, 'redo'));
     if (mod && key === 's') return done(() => { document.activeElement.blur(); if (EDIT) save(); });   // blur commits a typed time
     if (inp) {
+      if (inp.id === 'selIn' && ev.key === 'ArrowUp' && !mod && !ev.altKey) return done(() => editCurrentCaption(true));
       if (ev.key === 'Enter' || ev.key === 'Escape') return done(() => inp.blur());
       if (inp.matches('.tm') && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) return done(() => {
         const tr = inp.closest('tr'), l = tr.dataset.l, k = +tr.dataset.k, f = inp.dataset.f;
@@ -1503,7 +1538,7 @@ function renderView(e, d, t0, sel0) {
     }));
     if (key === 'Backspace' || key === 'Delete') return done(() => need(k => run('del', l, k)));
     if (key === 'm' && ev.shiftKey) return done(() => need(k => run('merge', l, k)));
-    if (key === 'Enter') return done(() => need(editSel));
+    if (key === 'Enter' || key === 'ArrowUp') return done(() => editCurrentCaption(key === 'ArrowUp'));
     if ((ev.code === 'BracketLeft' || ev.code === 'BracketRight') && !ev.shiftKey) return done(() => {
       const nk = s ? s.k + (ev.code === 'BracketRight' ? 1 : -1) : 0;
       if (arr[nk]) { select(l, nk); seek(arr[nk].start); }
@@ -1514,13 +1549,17 @@ function renderView(e, d, t0, sel0) {
 }
 
 document.addEventListener('keydown', ev => {
-  if (ev.key !== ' ' || ev.ctrlKey || ev.metaKey || ev.altKey || !$('#guide').hidden
+  if (![' ', 'Enter', 'ArrowUp'].includes(ev.key) || ev.ctrlKey || ev.metaKey || ev.altKey || !$('#guide').hidden
       || ev.target.closest('input, select, textarea') || ev.target.isContentEditable) return;
+  if (ev.key !== ' ') {
+    if (ev.target.tagName === 'VIDEO' && EDITKEY && EDITKEY(ev)) ev.stopPropagation();
+    return;
+  }
   const v = document.querySelector('#videos video');
   if (!v) return;
   ev.preventDefault(); ev.stopPropagation();
   if (!ev.repeat) v.paused ? v.play().catch(() => {}) : v.pause();
-}, true);   // intercept before native video controls handle Space a second time
+}, true);   // intercept playback/edit shortcuts before native video controls
 
 document.addEventListener('keydown', ev => {
   if (!$('#guide').hidden && (ev.key === 'Escape' || ev.key === '?')) { ev.preventDefault(); return guide(false); }

@@ -151,6 +151,57 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     const video = document.querySelector('video'); video.pause(); video.currentTime = time;
     video.dispatchEvent(new Event('timeupdate'));
   }, time);
+  await seek(duration * 0.1); await page.locator('video').focus();
+  await page.evaluate(() => document.querySelector('video').play());
+  await page.waitForFunction(() => !document.querySelector('video').paused);
+  await page.keyboard.press('Enter');
+  assert.equal(await page.locator('video').evaluate(video => video.paused), true);
+  assert.equal(await page.locator('#selIn').evaluate(input => input === document.activeElement), true);
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] First action');
+  await page.locator('#selIn').dispatchEvent('keydown', { key: 'ArrowUp', isComposing: true });
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] First action');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await page.locator('#selIn').inputValue(), 'Subtask fixture');
+  await page.locator('#selIn').fill('Keyboard subtask correction');
+  assert.equal(await page.locator('#levels tr[data-l="subs"][data-k="0"] input.tx').inputValue(), 'Keyboard subtask correction');
+  assert.equal(await page.locator('#ovlSub').innerText(), 'Keyboard subtask correction');
+  assert.ok((await page.locator('#laneSub [data-sub="0"]').getAttribute('title')).includes('Keyboard subtask correction'));
+  assert.equal(await page.evaluate(() => EDIT.atoms[0].text), '[both hands] First action');
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await page.locator('#selIn').inputValue(), 'Instruction fixture');
+  await page.locator('#selIn').fill('Keyboard instruction correction');
+  assert.equal(await page.locator('#levels input[data-l="ins"]').inputValue(), 'Keyboard instruction correction');
+  assert.equal(await page.locator('#laneIns').innerText(), 'Keyboard instruction correction');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await page.locator('#selIn').inputValue(), 'Keyboard instruction correction');
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#selIn').evaluate(input => input === document.activeElement), false);
+  await page.evaluate(() => document.querySelector('video').play());
+  await page.waitForFunction(() => document.querySelector('#selIn')?.value === '[both hands] First action');
+  await page.evaluate(() => document.querySelector('video').pause());
+  await seek(duration * 0.4);
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Second action');
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('.tlbar label.switch').click();
+  assert.equal(await page.locator('#edMode').isChecked(), false);
+  await page.locator('#annotationToggle').uncheck();
+  await page.locator('video').focus(); await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#edMode').isChecked(), true);
+  assert.equal(await page.locator('#selbox').isVisible(), true);
+  assert.equal(await page.locator('#selIn').evaluate(input => input === document.activeElement), true);
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Second action');
+  await page.keyboard.press('Escape');
+  await page.evaluate(fixture => renderView(CUR, { ...fixture, subtasks: [], instruction: '' }, 0), fixture);
+  await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
+  await page.locator('video').focus(); await page.keyboard.press('Enter'); await page.keyboard.press('ArrowUp');
+  assert.equal(await page.locator('#selIn').inputValue(), '');
+  await page.locator('#selIn').fill('Added instruction through keyboard');
+  assert.equal(await page.locator('#levels input[data-l="ins"]').inputValue(), 'Added instruction through keyboard');
+  assert.equal(await page.locator('#laneIns').innerText(), 'Added instruction through keyboard');
+  await page.evaluate(fixture => renderView(CUR, fixture, 0), fixture);
+  await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
   const draft = () => page.evaluate(() => JSON.parse(JSON.stringify({ ins: EDIT.ins, subs: EDIT.subs, atoms: EDIT.atoms })));
   await seek(duration * 0.1);
   await page.locator('video').focus();
@@ -347,7 +398,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     assert.equal((await context.request.get(`${base}/api/admin/videos`)).status(), 403);
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: mock login/roles; real video; caption mouse/touch drag, bounds, keyboard/reset, position persistence, resize/fullscreen; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; comparison beside video, responsive stacking, collapse and fullscreen; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
+  console.log('PASS: mock login/roles; real video; Enter editing while playing/paused/view mode, Up atomic/subtask/instruction, empty instruction, parent edit sync, return to playhead; caption mouse/touch drag, bounds, keyboard/reset, position persistence, resize/fullscreen; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; comparison beside video, responsive stacking, collapse and fullscreen; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   try { if (restoreCaptions) await restoreCaptions(); }
   catch (error) { console.error(error); process.exitCode = 1; }
