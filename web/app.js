@@ -52,10 +52,11 @@ function showLogin(text = '') {
   $('recording-list').replaceChildren();
   $('recording-detail').replaceChildren();
   $('user-name').textContent = '';
-  $('user-name').hidden = $('logout').hidden = $('library-view').hidden = true;
+  $('user-name').hidden = $('logout').hidden = $('library-view').hidden = $('datasets-view').hidden = true;
   $('login-view').hidden = false;
   $('password').value = '';
   message('login-error', text);
+  message('account-notice', '');
 }
 
 async function api(path, options = {}) {
@@ -76,19 +77,20 @@ async function api(path, options = {}) {
 }
 
 async function openLibrary(user) {
-  if (!user.roles?.includes('admin')) {
-    await api('/api/auth/logout', { method: 'POST' });
-    showLogin('This sample requires staff admin access. Ask your administrator for access.');
+  if (new URLSearchParams(location.search).get('next') === '/captioning_data/') {
+    location.assign('/captioning_data/' + location.hash);
     return;
   }
   state.user = user;
   state.epoch++;
   $('user-name').textContent = user.full_name || user.email || 'Staff account';
-  $('user-name').hidden = $('logout').hidden = $('library-view').hidden = false;
+  $('user-name').hidden = $('logout').hidden = $('datasets-view').hidden = false;
+  $('library-view').hidden = !user.roles?.includes('admin');
   $('login-view').hidden = true;
   $('password').value = '';
   message('library-notice', '');
-  await loadRecordings();
+  message('account-notice', '');
+  if (user.roles?.includes('admin')) await loadRecordings();
 }
 
 function renderList() {
@@ -260,7 +262,7 @@ $('logout').addEventListener('click', async () => {
     await api('/api/auth/logout', { method: 'POST' });
     showLogin();
   } catch (error) {
-    if (error.status !== 401) message('library-notice', `Could not sign out: ${error.message}`);
+    if (error.status !== 401) message('account-notice', `Could not sign out: ${error.message}`);
   } finally {
     $('logout').disabled = false;
   }

@@ -1,0 +1,22 @@
+diff --git a/backend/models.py b/backend/models.py
+--- a/backend/models.py
++++ b/backend/models.py
+@@ -95,7 +95,8 @@ user_roles = Table(
+     Column("granted_by", String(36), ForeignKey("users.id")),
+     Column("granted_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+     CheckConstraint(
+-        "role IN ('worker','admin','record_manager','cut_manager','caption_manager')",
++        "role IN ('worker','admin','record_manager','cut_manager','caption_manager',"
++        "'caption_data_admin','caption_data_reviewer')",
+         name="ck_user_roles_role",
+     ),
+ )
+diff --git a/backend/routers/admin.py b/backend/routers/admin.py
+--- a/backend/routers/admin.py
++++ b/backend/routers/admin.py
+@@ -2217,3 +2217,4 @@
+ WorkerRole = Literal[
+-    "worker", "admin", "record_manager", "cut_manager", "caption_manager"
++    "worker", "admin", "record_manager", "cut_manager", "caption_manager",
++    "caption_data_admin", "caption_data_reviewer"
+ ]
