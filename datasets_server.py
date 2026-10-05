@@ -275,7 +275,7 @@ def main():
     parser.add_argument('--edits', type=Path, required=True)
     parser.add_argument('--source', action='append', metavar='DATASET=MANIFEST')
     parser.add_argument('--export', type=Path, metavar='DIR', help='Export a durable training snapshot, then exit')
-    parser.add_argument('--port', type=int, default=8325)
+    parser.add_argument('--port', type=int, default=8326)
     parser.add_argument('--auth-port', type=int, default=8903)
     parser.add_argument('--origin', default=Handler.origin)
     args = parser.parse_args()

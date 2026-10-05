@@ -91,7 +91,7 @@ function request(url, method = 'GET') { return new Promise((resolve, reject) => 
     .replace('ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;', '')
     .replace('/var/www/project1b-internal/current', path.join(repo, 'web'))
     .replaceAll('127.0.0.1:8903', `127.0.0.1:${apiPort}`)
-    .replaceAll('127.0.0.1:8325', `127.0.0.1:${datasetsPort}`);
+    .replaceAll('127.0.0.1:8326', `127.0.0.1:${datasetsPort}`);
   const config = `${tmp}/nginx.conf`;
   fs.writeFileSync(config, `daemon off; pid ${tmp}/nginx.pid; error_log stderr; events {} http { include /etc/nginx/mime.types; access_log off; client_body_temp_path ${tmp}/body; proxy_temp_path ${tmp}/proxy; ${site} }`);
   execFileSync('/usr/sbin/nginx', ['-t', '-p', `${tmp}/`, '-c', config], { stdio: 'pipe' });

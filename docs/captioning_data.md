@@ -21,7 +21,7 @@ flowchart LR
     H --> E[Versioned training export]
 ```
 
-Nginx proxies the existing authentication API at `127.0.0.1:8903`. The caption adapter listens at `127.0.0.1:8325`; it validates the Project1B session on every protected request. Neither upstream should be exposed publicly.
+Nginx proxies the existing authentication API at `127.0.0.1:8903`. The caption adapter listens at `127.0.0.1:8326`; it validates the Project1B session on every protected request. Neither upstream should be exposed publicly.
 
 Viewer UI/backend are pinned in `viewer/`; `viewer/SOURCE_SNAPSHOT.json` records the source baseline and file checksums. Installation snapshots imported helpers from the VR-finetune-VLM checkout. Manifests, videos, and account data remain outside this repository.
 
@@ -143,7 +143,7 @@ Verify after installation:
 
 ```bash
 sudo systemctl status project1b-datasets.service --no-pager
-curl --fail http://127.0.0.1:8325/healthz
+curl --fail http://127.0.0.1:8326/healthz
 sudo nginx -t
 ```
 

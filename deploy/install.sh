@@ -48,6 +48,15 @@ fi
 if systemctl is-enabled --quiet project1b-datasets.service; then service_enabled=true; fi
 if systemctl is-active --quiet project1b-datasets.service; then service_active=true; fi
 
+# Refuse a first install if the dedicated adapter port belongs to another process.
+if ! $had_service; then
+    "$datasets_python" - <<'PYTHON_PORT'
+import socket
+with socket.socket() as listener:
+    listener.bind(('127.0.0.1', 8326))
+PYTHON_PORT
+fi
+
 if [[ -e $available ]] && ! grep -q '^# Project1B internal recording library' "$available"; then
     echo "Existing $available is not owned by this project; leaving it untouched." >&2
     rmdir "$backup"
@@ -148,8 +157,8 @@ systemctl enable project1b-datasets.service
 systemctl restart project1b-datasets.service
 dataset_ready=false
 for attempt in {1..30}; do
-    if curl --noproxy '*' --fail --silent --connect-timeout 1 --max-time 2 \
-        http://127.0.0.1:8325/healthz -o "$backup/datasets-health.json"; then
+    if systemctl is-active --quiet project1b-datasets.service && curl --noproxy '*' --fail --silent --connect-timeout 1 --max-time 2 \
+        http://127.0.0.1:8326/healthz -o "$backup/datasets-health.json"; then
         dataset_ready=true
         break
     fi
