@@ -61,6 +61,29 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   const media = await context.request.get(`${base}/captioning_data/video?p=${encodeURIComponent(id)}`, { headers: { Range: 'bytes=0-31' } });
   assert.equal(media.status(), 206); assert.equal((await media.body()).length, 32);
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0, null, { timeout: 30000 });
+  const mediaLayout = () => page.evaluate(() => {
+    const rect = selector => {
+      const box = document.querySelector(selector).getBoundingClientRect();
+      return { x: box.x, y: box.y, right: box.right, bottom: box.bottom, width: box.width };
+    };
+    return { video: rect('#videos'), comparison: rect('#captionCompare') };
+  });
+  assert.equal(await page.locator('#captionCompare').evaluate(element => element.open), true);
+  const wide = await mediaLayout();
+  assert.ok(wide.comparison.x >= wide.video.right + 10);
+  assert.ok(Math.abs(wide.comparison.y - wide.video.y) < 1);
+  await page.locator('#captionCompare > summary').click();
+  assert.ok((await mediaLayout()).video.width > wide.video.width);
+  await page.locator('#captionCompare > summary').click();
+  await page.setViewportSize({ width: 1000, height: 720 });
+  const narrow = await mediaLayout();
+  assert.ok(narrow.comparison.y >= narrow.video.bottom + 10);
+  assert.ok(await page.locator('.review-media').evaluate(element => element.scrollWidth <= element.clientWidth + 1));
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.locator('#fs').click();
+  await page.waitForFunction(() => document.fullscreenElement?.id === 'stage');
+  assert.ok(await page.locator('#stage').evaluate(element => element.getBoundingClientRect().width >= innerWidth - 1));
+  await page.evaluate(() => document.exitFullscreen());
   const duration = initial.duration;
   const fixture = { ...initial, instruction: 'Instruction fixture',
     subtasks: [{ i: 0, start: 0, end: duration * 0.75, desc: 'Subtask fixture' }],
@@ -206,6 +229,9 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.locator('#cmpBefore').selectOption('previous');
   assert.match(await page.locator('#cmpMeta').innerText(), /before selected change/i);
   assert.ok(await page.locator('#cmpContent ins').count()); assert.ok(await page.locator('#cmpContent del').count());
+  await page.locator('.review-media').scrollIntoViewIfNeeded();
+  assert.equal(await page.locator('#captionCompare').evaluate(element => getComputedStyle(element).overflowY), 'auto');
+  await page.locator('.review-media').screenshot({ path: path.join(state, 'captioning-data-video-comparison.png') });
   await page.locator('#edSave').click();
   await page.waitForFunction(before => EDIT?.version === before + 1, version);
   lastTestVersion = version + 1;
@@ -243,6 +269,8 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.locator('#compareBtn').click(); await page.locator('#compareBtn').click();
   await page.waitForFunction(() => document.body.classList.contains('noside'));
   assert.equal(await page.locator('#cmpContent td').first().evaluate(element => getComputedStyle(element).display), 'block');
+  const mobile = await mediaLayout();
+  assert.ok(mobile.comparison.y >= mobile.video.bottom + 10);
   assert.ok(await page.locator('#captionCompare').evaluate(element => element.scrollWidth <= element.clientWidth + 1));
   await page.locator('#cmpUnchanged').uncheck();
   await page.locator('#captionCompare').screenshot({ path: path.join(state, 'captioning-data-comparison-mobile.png') });
@@ -263,7 +291,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     assert.equal((await context.request.get(`${base}/api/admin/videos`)).status(), 403);
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: mock login/roles; real video; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
+  console.log('PASS: mock login/roles; real video; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; comparison beside video, responsive stacking, collapse and fullscreen; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   try { if (restoreCaptions) await restoreCaptions(); }
   catch (error) { console.error(error); process.exitCode = 1; }

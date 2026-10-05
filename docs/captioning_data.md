@@ -299,7 +299,7 @@ Ask reviewers to save drafts before restart, then refresh their browsers. Assign
 1. Filter samples by dataset, split, assignee, QA state, or search text.
 2. Select a sample. Play the video and inspect instruction, sub-task, and atomic captions.
 3. Edit caption text and cue timing. Use the existing add/remove controls where needed.
-4. Open **Before / after** before saving. Default comparison is original versus current saved captions or unsaved draft.
+4. Inspect **Before / after** beside the video (below it on narrow screens). It opens by default and scrolls independently on wide screens; its summary or the **Before / after** button collapses it. Default comparison is original versus current saved captions or unsaved draft.
 5. Inspect removed words, added words, timing changes, and added/removed cues. **Show unchanged captions** includes the untouched parts. Timestamp buttons seek the video to either version's cue.
 6. Click **Save** and wait for success. Reload to confirm the correction persisted.
 

@@ -64,7 +64,7 @@
   #stats tr.all td, #qaStats tr.all td { font-weight:600; border-top:2px solid var(--line); }
   #stats tr.pick { cursor:pointer; } #stats tr.pick:hover td { background:#f0f3f7; }
   #stats .note, #qaStats .note { color:var(--muted); font-size:11px; margin-top:4px; }
-  #view { flex:1; overflow:auto; padding:12px 16px; }
+  #view { flex:1; min-width:0; overflow:auto; padding:12px 16px; container-type:inline-size; }
   #view .empty { color:var(--muted); margin-top:40px; text-align:center; }
   .nav { display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
   .nav .pos { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
@@ -299,6 +299,12 @@
   .tl .seg.discarded { opacity:.55; outline:1px dashed #b91c1c; }
   .tl .seg.context { opacity:.45; }
   .compare { margin:12px 0; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  .review-media { display:grid; gap:12px; align-items:start; margin-bottom:12px; }
+  .review-media > .compare { margin:0; min-width:0; }
+  @container (min-width:760px) {
+    .review-media:has(.compare[open]) { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+    .review-media > .compare[open] { max-height:58vh; overflow:auto; }
+  }
   .compare > summary { padding:12px; cursor:pointer; font-weight:650; }
   .compare > summary span { margin-left:8px; color:var(--muted); font-weight:400; }
   .cmp-controls { display:flex; flex-wrap:wrap; align-items:end; gap:12px; padding:0 12px 12px; }
@@ -379,6 +385,8 @@
     <li>Pick an episode in the list. ☰ shows / hides it; drag its right edge to resize it, and below the minimum it hides.</li>
     <li>Use the <b>video size</b> slider above the player to shrink or enlarge its display between 25% and 100%.
       The size is remembered across episodes and reloads; fullscreen uses the full screen.</li>
+    <li><b>Before / after</b> sits beside the video on wide screens and below it when space is narrow. Scroll the panel to inspect long
+      comparisons; its summary or the Before / after button collapses it.</li>
     <li>The timeline has one lane per level: 1 instruction, 2 sub-task (where available), 3 atomic. Click a caption to select it and jump to its
       start; click or drag the ruler to scrub; − / fit / + (left of the ruler) zoom, down to 0.1 s ticks.</li>
     <li>The selected annotation follows the playhead: atomic caption, then sub-task, then instruction when timed captions are absent.
@@ -729,7 +737,7 @@ const step = d => { const i = FILTERED.indexOf(CUR); if (FILTERED[i + d]) open(F
 const random = () => { if (FILTERED.length) open(FILTERED[Math.floor(Math.random() * FILTERED.length)].id); };
 
 function renderView(e, d, t0, sel0) {
-  const comparisonOpen = t0 !== undefined ? $('#captionCompare')?.open : d.version > 0;
+  const comparisonOpen = t0 !== undefined ? ($('#captionCompare')?.open ?? true) : true;
   const i = FILTERED.indexOf(e), hasSub = d.subtasks.length > 0;
   const q = `p=${encodeURIComponent(e.id)}`;
   const dur = e.duration || Math.max(1, ...d.atomic.map(a => a.end));
@@ -767,9 +775,19 @@ function renderView(e, d, t0, sel0) {
       <label class="videoSize">video size <input type="range" id="videoSize" min="25" max="100" step="5" value="${VIDEO_SIZE}"
         aria-label="Displayed video size" aria-valuetext="${VIDEO_SIZE}%"><output id="videoSizeValue" for="videoSize">${VIDEO_SIZE}%</output></label><span class="sp"></span>
       <label>speed <select id="rate">${[0.5, 1, 1.5, 2, 4].map(x => `<option ${x === RATE ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
+    <div class="review-media">
     <div id="videos" style="width:${VIDEO_SIZE}%; --video-scale:${VIDEO_SIZE / 100}"><div id="stage"><video controls preload="metadata" src="${mediaBase}/video?${q}">
         <track kind="subtitles" label="sub-task + atomic" srclang="en" default></video>
       <div id="ovl"><div class="s hide" id="ovlSub"></div><div class="a hide" id="ovlAtom"></div></div></div></div>
+    <details id="captionCompare" class="compare" ${comparisonOpen ? 'open' : ''}>
+      <summary>Before / after <span id="cmpCount"></span></summary>
+      <div class="cmp-controls">
+        <label>Before<select id="cmpBefore" aria-label="Before version"></select></label>
+        <label>After<select id="cmpAfter" aria-label="After version"></select></label>
+        <label><input type="checkbox" id="cmpUnchanged">Show unchanged captions</label>
+      </div>
+      <p class="cmp-meta" id="cmpMeta"></p><div class="cmp-content" id="cmpContent"></div>
+    </details></div>
     <div class="tlbar">
       ${canSave(e) ? `<label class="switch" title="edit mode: correct the times and text (on by default, remembered in this browser)"><input type="checkbox" id="edMode" ${EDITON ? 'checked' : ''}><i></i>Edit mode</label>
       <button id="reset" title="restore original captions; saved versions stay in history">↺ reset</button>`
@@ -791,15 +809,6 @@ function renderView(e, d, t0, sel0) {
       <span><i style="background:var(--atom-bg)"></i>3 atomic action (training target)</span>
       ${d.partial ? '<span><i style="background:#fff1d6;outline:1px dashed var(--warn);outline-offset:-1px"></i>sub-task kept unsplit</span>' : ''}
       ${d.n_flag ? '<span><i style="background:#f6cccc"></i>⚑ judged wrong by the task / sub-task check (suggestion under the line)</span>' : ''}</div>
-    <details id="captionCompare" class="compare" ${comparisonOpen ? 'open' : ''}>
-      <summary>Before / after <span id="cmpCount"></span></summary>
-      <div class="cmp-controls">
-        <label>Before<select id="cmpBefore" aria-label="Before version"></select></label>
-        <label>After<select id="cmpAfter" aria-label="After version"></select></label>
-        <label><input type="checkbox" id="cmpUnchanged">Show unchanged captions</label>
-      </div>
-      <p class="cmp-meta" id="cmpMeta"></p><div class="cmp-content" id="cmpContent"></div>
-    </details>
     <div id="levels"></div>`;
 
   const v = $('#videos video');
@@ -874,7 +883,7 @@ function renderView(e, d, t0, sel0) {
   });
   $('#compareBtn').addEventListener('click', () => {
     comparison.open = !comparison.open;
-    if (comparison.open) comparison.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (comparison.open) $('.review-media').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
   v.playbackRate = RATE;
   if (t0) v.addEventListener('loadedmetadata', () => { v.currentTime = t0; }, { once: true });
