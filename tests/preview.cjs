@@ -102,6 +102,19 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.equal(await page.locator('#captionCompare').isVisible(), true);
   assert.equal(await page.locator('#captionCompare > summary').count(), 0);
   assert.equal(await page.locator('#compareBtn').getAttribute('aria-expanded'), 'true');
+  const groupControls = name => page.getByRole('group', { name, exact: true }).evaluate(group => [...group.querySelectorAll('button, input, select')].map(control => control.id));
+  assert.deepEqual(await groupControls('Video controls'), ['rate', 'videoSize', 'fs']);
+  assert.deepEqual(await groupControls('Caption display controls'), ['cc', 'captionOpacity']);
+  assert.deepEqual(await groupControls('Review display controls'), ['compareBtn', 'annotationToggle', 'qwenToggle']);
+  assert.deepEqual(await groupControls('Editing controls'), ['edMode', 'link', 'magnet']);
+  assert.deepEqual(await groupControls('Review actions'), ['reviewFlag', 'reset', 'edDiscard', 'edSave']);
+  assert.ok(await page.locator('#selbox').evaluate(card => card.getBoundingClientRect().height <= 96));
+  assert.equal(await page.locator('#selbox').evaluate(card => card.nextElementSibling.classList.contains('tlrow')), true);
+  await page.locator('.review-media').evaluate(media => media.scrollIntoView({ block: 'start' }));
+  assert.ok(await page.evaluate(() => {
+    const view = document.querySelector('#view').getBoundingClientRect(), video = document.querySelector('#videos').getBoundingClientRect(), timeline = document.querySelector('.tlrow').getBoundingClientRect();
+    return video.top >= view.top - 1 && timeline.bottom <= view.bottom + 1;
+  }), 'Video and full timeline fit together at 1280×720');
   const wide = await mediaLayout();
   assert.ok(wide.comparison.x >= wide.video.right + 10);
   assert.ok(Math.abs(wide.comparison.y - wide.video.y) < 1);

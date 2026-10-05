@@ -75,8 +75,9 @@
   .title code { font-size:12px; color:var(--muted); }
   .kv { color:var(--muted); font-size:12px; margin:4px 0 10px; }
   .kv b { color:var(--fg); font-weight:600; }
-  .cams { display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
-  .cams .sp { flex:1; }
+  .cams { display:flex; gap:8px 16px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
+  .control-group { display:flex; gap:8px; align-items:center; flex-wrap:wrap; min-width:0; }
+  .control-label { font-size:11px; font-weight:600; color:var(--muted); }
   .cams .videoSize { display:flex; align-items:center; gap:6px; }
   .videoSize input { width:120px; }
   .videoSize output { min-width:36px; font-variant-numeric:tabular-nums; }
@@ -104,13 +105,13 @@
   .hand.l { background:#e0e7ff; color:#3730a3; } .hand.r { background:#fce7f3; color:#9d174d; } .hand.e { background:#e5e7eb; color:#374151; }
   .hand.dup { background:#fee2e2; color:var(--bad); box-shadow:0 0 0 1.5px var(--bad); }
   /* the selected caption: one card, its parent as a header strip, the caption under it, Qwen's notes as the footer */
-  .selbox { margin:10px 0 0; }
+  .selbox { margin:6px 0 0; }
   .selbox .hint { padding:8px 12px; border:1px dashed #cbd2da; border-radius:6px; color:var(--muted); font-size:12px; text-align:center; background:var(--panel); }
   .selcard { background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden; box-shadow:0 1px 2px rgba(15,23,42,.05); }
-  .selrow { padding:6px 12px; border-left:4px solid transparent; }
-  .selrow.par { display:flex; gap:10px; align-items:center; background:#f7f8fa; border-bottom:1px solid var(--line); font-size:13px; color:#4b5563; }
+  .selrow { padding:3px 10px; border-left:4px solid transparent; }
+  .selrow.par { display:flex; gap:8px; align-items:center; background:#f7f8fa; border-bottom:1px solid var(--line); font-size:12px; color:#4b5563; }
   .selrow.par.ins { border-left-color:var(--ins); } .selrow.par.sub { border-left-color:var(--sub); }
-  .selrow.me { padding-top:7px; padding-bottom:9px; }
+  .selrow.me { padding-top:4px; padding-bottom:5px; }
   .selrow.me.ins { border-left-color:var(--ins); } .selrow.me.sub { border-left-color:var(--sub); } .selrow.me.atom { border-left-color:var(--atom); }
   .selrow .ptx { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .selrow .flg { flex:none; color:var(--bad); font-size:12px; font-weight:600; }
@@ -118,19 +119,19 @@
   .par .chip.ins { background:var(--ins-bg); color:var(--ins); } .par .chip.sub { background:var(--sub-bg); color:var(--sub); }
   .me .chip.ins { background:var(--ins); color:#fff; } .me .chip.sub { background:var(--sub); color:#fff; } .me .chip.atom { background:var(--atom); color:#fff; }
   .selrow .t { flex:none; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
-  .selhd { display:flex; gap:10px; align-items:center; margin-bottom:6px; }
+  .selhd { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:3px; }
   .selhd .sp { flex:1; }
   .selhd .act { font-size:12px; padding:2px 10px; }
   .selhd .act:hover:not(:disabled) { background:var(--acc-bg); border-color:var(--acc); color:var(--acc); }
   .selhd .act.del:hover:not(:disabled) { background:#fef2f2; border-color:var(--bad); color:var(--bad); }
-  .selin { width:100%; font:inherit; font-size:15px; padding:6px 9px; border:1px solid #cbd2da; border-radius:5px; background:#fff; color:var(--fg); }
+  .selin { width:100%; font:inherit; font-size:14px; padding:4px 8px; border:1px solid #cbd2da; border-radius:5px; background:#fff; color:var(--fg); }
   .selin:focus { outline:none; border-color:var(--acc); box-shadow:0 0 0 3px var(--acc-bg); }
   .selin.dup { border-color:var(--bad); background:#fff7f7; }
-  .seltx { font-size:15px; padding:2px 0; }
+  .seltx { font-size:14px; padding:1px 0; }
   .selrow .warn { margin-top:6px; font-size:12px; color:var(--bad); background:#fef2f2; border-radius:4px; padding:4px 8px; }
   .selrow .warn:empty { display:none; }
   .selrow .warn .prev { margin-top:3px; color:var(--fg); font-size:13px; }
-  #selChk { border-top:1px solid #f3d2d2; background:#fffafa; padding:6px 12px 8px 16px; }
+  #selChk { border-top:1px solid #f3d2d2; background:#fffafa; padding:4px 10px 5px 14px; max-height:80px; overflow:auto; }
   #selChk:empty { display:none; }
   #view.qwen-hidden .chk, #view.qwen-hidden #selChk,
   #view.qwen-hidden [data-op="sugg"], #view.qwen-hidden [data-op="sugg-ins"] { display:none; }
@@ -143,10 +144,9 @@
   .tl .seg input.tled { position:absolute; top:0; bottom:0; left:0; width:max(100%, 320px); z-index:6; font:13px system-ui, sans-serif;
                         padding:0 5px; border:2px solid var(--acc); border-radius:3px; background:#fff; color:var(--fg); box-shadow:0 2px 8px rgba(0,0,0,.25); }
   /* Three-lane timeline: instruction over sub-tasks over atomic lines, under a ruler; zoom widens .tlc and .tlwrap scrolls */
-  .tlbar { display:flex; gap:12px; align-items:center; margin:10px 0 0; font-size:12px; color:var(--muted); flex-wrap:wrap; }
-  .tlbar .sp { flex:1; }
-  .tlbar .edonly { display:inline-flex; gap:12px; align-items:center; }
-  .tlbar .edonly button + button { margin-left:-6px; }
+  .tlbar { display:flex; gap:8px 16px; align-items:center; margin:6px 0 0; font-size:12px; color:var(--muted); flex-wrap:wrap; }
+  .tlbar .review-actions { margin-left:auto; }
+  .tlbar .edonly { display:inline-flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .tlbar:not(.on) .edonly { display:none; }
   .switch { display:inline-flex; align-items:center; gap:7px; cursor:pointer; font-weight:600; color:var(--fg); font-size:13px; }
   .switch input { position:absolute; opacity:0; width:0; height:0; }
@@ -310,9 +310,11 @@
   .compare { margin:12px 0; border:1px solid var(--line); border-radius:8px; background:#fff; }
   .review-media { display:grid; gap:12px; align-items:start; margin-bottom:12px; }
   .review-media > .compare { margin:0; min-width:0; }
+  /* ponytail: desktop height budget assumes compact controls; measure heights if expanded panels must also fit. */
   @container (min-width:760px) {
     .review-media:has(.compare:not([hidden])) { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
-    .review-media > .compare:not([hidden]) { max-height:58vh; overflow:auto; }
+    #stage video { max-height:calc(min(58vh, max(160px, 100dvh - 460px)) * var(--video-scale, 1)); }
+    .review-media > .compare:not([hidden]) { max-height:min(58vh, max(160px, 100dvh - 460px)); overflow:auto; }
   }
   .compare > h3 { margin:0; padding:12px; font-size:inherit; font-weight:650; }
   .compare > h3 span { margin-left:8px; color:var(--muted); font-weight:400; }
@@ -794,15 +796,15 @@ function renderView(e, d, t0, sel0) {
     <div class="kv">${fmt(e.duration)} · <b>1</b> instruction → <b>${d.subtasks.length || '—'}</b> sub-tasks → <b>${d.atomic.length}</b> atomic lines
       ${hasSub ? ` (<b>${(d.atomic.length / d.subtasks.length).toFixed(1)}</b> per sub-task)` : ''} · <code>${esc(d.source)}</code></div>
     ${episodeMetadata(d)}
-    <div class="cams"><label><input type="checkbox" id="cc" checked> captions on video</label>
-      <label><input type="checkbox" id="annotationToggle" aria-controls="selbox" ${ANNOTATIONON ? 'checked' : ''}> selected annotation</label>
-      <button id="qwenToggle">${QWENON ? 'Hide' : 'Show'} Qwen suggestions</button>
-      <button id="fs">⛶ fullscreen</button>
+    <div class="cams"><div class="control-group" role="group" aria-label="Video controls"><span class="control-label">Video</span>
+      <label>speed <select id="rate">${[0.5, 1, 1.5, 2, 4].map(x => `<option ${x === RATE ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
       <label class="videoSize">video size <input type="range" id="videoSize" min="25" max="100" step="5" value="${VIDEO_SIZE}"
         aria-label="Displayed video size" aria-valuetext="${VIDEO_SIZE}%"><output id="videoSizeValue" for="videoSize">${VIDEO_SIZE}%</output></label>
+      <button id="fs">⛶ fullscreen</button></div>
+      <div class="control-group" role="group" aria-label="Caption display controls"><span class="control-label">Captions</span>
+      <label><input type="checkbox" id="cc" checked> captions on video</label>
       <label class="videoSize">caption background <input type="range" id="captionOpacity" min="0" max="100" step="1" value="${CAPTION_BG}"
-        aria-label="Caption background opacity" aria-valuetext="${CAPTION_BG}%"><output id="captionOpacityValue" for="captionOpacity">${CAPTION_BG}%</output></label><span class="sp"></span>
-      <label>speed <select id="rate">${[0.5, 1, 1.5, 2, 4].map(x => `<option ${x === RATE ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
+        aria-label="Caption background opacity" aria-valuetext="${CAPTION_BG}%"><output id="captionOpacityValue" for="captionOpacity">${CAPTION_BG}%</output></label></div></div>
     <div class="review-media">
     <div id="videos" style="width:${VIDEO_SIZE}%; --video-scale:${VIDEO_SIZE / 100}"><div id="stage" style="--caption-bg-opacity:${CAPTION_BG / 100}"><video controls preload="metadata" src="${mediaBase}/video?${q}">
         <track kind="subtitles" label="sub-task + atomic" srclang="en" default></video>
@@ -818,17 +820,27 @@ function renderView(e, d, t0, sel0) {
       <p class="cmp-meta" id="cmpMeta"></p><div class="cmp-content" id="cmpContent"></div>
     </section></div>
     <div class="tlbar">
-      ${canSave(e) ? `<label class="switch" title="edit mode: correct the times and text (on by default, remembered in this browser)"><input type="checkbox" id="edMode" ${EDITON ? 'checked' : ''}><i></i>Edit mode</label>
-      <button id="reset" title="restore original captions; saved versions stay in history">↺ reset</button>`
+      <div class="control-group" role="group" aria-label="Review display controls">
+        <button id="compareBtn" aria-controls="captionCompare" aria-expanded="${!!comparisonOpen}">Before / after</button>
+        <label><input type="checkbox" id="annotationToggle" aria-controls="selbox" ${ANNOTATIONON ? 'checked' : ''}> selected annotation</label>
+        <button id="qwenToggle">${QWENON ? 'Hide' : 'Show'} Qwen suggestions</button></div>
+      <div class="control-group" role="group" aria-label="Editing controls">
+      ${canSave(e) ? `<label class="switch" title="edit mode: correct the times and text (on by default, remembered in this browser)"><input type="checkbox" id="edMode" ${EDITON ? 'checked' : ''}><i></i>Edit mode</label>`
         : `<span class="kv" style="margin:0">view only${e.assignee ? ` · assigned to ${esc(e.assignee)}` : ''}${ME ? '' : ' · log in to edit'}</span>`}
-      <button id="compareBtn" aria-controls="captionCompare" aria-expanded="${!!comparisonOpen}">Before / after</button>
-      <button id="reviewFlag" ${canSave(e) ? '' : 'disabled'} title="Toggle review flag, then Save">Flag for Review</button>
       <span class="edonly">
         <label title="when a start or end moves, a neighbour that shares it moves along; off, a caption stops at its neighbours"><input type="checkbox" id="link" ${LINK ? 'checked' : ''}> move shared boundaries</label>
-        <label title="a dragged edge that comes near the playhead lands on it"><input type="checkbox" id="magnet" ${MAGNET ? 'checked' : ''}> magnet</label>
-        <span id="edmsg"></span></span><span class="sp"></span>
-      <span class="edonly"><button id="edDiscard" title="drop the unsaved changes">discard</button><button id="edSave" class="pri" title="save (Ctrl+S)">save</button></span></div>
+        <label title="a dragged edge that comes near the playhead lands on it"><input type="checkbox" id="magnet" ${MAGNET ? 'checked' : ''}> magnet</label></span></div>
+      <div class="control-group review-actions" role="group" aria-label="Review actions">
+        <button id="reviewFlag" ${canSave(e) ? '' : 'disabled'} title="Toggle review flag, then Save">Flag for Review</button>
+        ${canSave(e) ? '<button id="reset" title="restore original captions; saved versions stay in history">↺ reset</button>' : ''}
+        <span class="edonly"><button id="edDiscard" title="drop the unsaved changes">discard</button><button id="edSave" class="pri" title="save (Ctrl+S)">save</button></span></div>
+      <span class="edonly" id="edmsg"></span></div>
     <div class="selbox" id="selbox" ${ANNOTATIONON ? '' : 'hidden'}></div>
+    <div class="tlrow"><div class="tlgut"><span class="zoom"><button id="zOut" title="zoom out">−</button><button id="zFit" title="fit the whole episode">fit</button><button id="zIn" title="zoom in">+</button></span><span class="ins">1 instruction</span><span class="sub">2 sub-task</span><span class="atom">3 atomic</span></div>
+    <div class="tlwrap"><div class="tlc"><div class="ruler"></div><div class="tl">
+      <div class="lane ins" id="laneIns"></div>
+      <div class="lane sub${hasSub ? '' : ' none'}" id="laneSub">${hasSub ? '' : `no sub-task level in ${esc(e.dataset)}`}</div>
+      <div class="lane atom" id="laneAtom"></div></div><div class="head"></div><div class="crop-mask" id="cropLeft"></div><div class="crop-mask" id="cropRight"></div></div></div></div>
     <div id="reviewReasonBox" hidden><label for="reviewReason">Reason for review (required)</label>
       <textarea id="reviewReason" rows="2" maxlength="2000" placeholder="Describe what needs another review"></textarea></div>
     <details id="cropTool" ${d.crop ? 'open' : ''}><summary>Crop video</summary>
@@ -841,11 +853,6 @@ function renderView(e, d, t0, sel0) {
         <label><input type="checkbox" id="cropPreview" checked> Preview crop</label><span id="cropStatus"></span>
       </div><div class="kv">Crop keeps this time range. Original media and caption timestamps are preserved. Save to store changes.</div>
     </details>
-    <div class="tlrow"><div class="tlgut"><span class="zoom"><button id="zOut" title="zoom out">−</button><button id="zFit" title="fit the whole episode">fit</button><button id="zIn" title="zoom in">+</button></span><span class="ins">1 instruction</span><span class="sub">2 sub-task</span><span class="atom">3 atomic</span></div>
-    <div class="tlwrap"><div class="tlc"><div class="ruler"></div><div class="tl">
-      <div class="lane ins" id="laneIns"></div>
-      <div class="lane sub${hasSub ? '' : ' none'}" id="laneSub">${hasSub ? '' : `no sub-task level in ${esc(e.dataset)}`}</div>
-      <div class="lane atom" id="laneAtom"></div></div><div class="head"></div><div class="crop-mask" id="cropLeft"></div><div class="crop-mask" id="cropRight"></div></div></div></div>
     <div class="legend"><span><i style="background:var(--ins-bg)"></i>1 instruction (episode)</span>
       <span><i style="background:var(--sub-bg)"></i>2 sub-task (${esc(d.subtask_source || 'native annotation')})</span>
       <span><i style="background:var(--atom-bg)"></i>3 atomic action (training target)</span>
