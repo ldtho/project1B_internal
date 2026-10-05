@@ -95,6 +95,7 @@ The patch updates:
 
 - `backend/models.py`: the `ck_user_roles_role` model constraint.
 - `backend/routers/admin.py`: the `WorkerRole` request allowlist.
+- `backend/static/admin.html`: both caption roles in the account role selector.
 
 Commit and test the patch in the main Project1B repository. This internal-site PR does not deploy the companion backend change.
 
@@ -153,7 +154,7 @@ Then test in a browser with an ordinary Project1B account: login, playback, capt
 
 Use an existing Project1B **`admin`** account on the main Project1B site. The internal site's Nginx allowlist intentionally does not expose `/api/admin/...`.
 
-Find the account in Project1B administration and record its UUID and roles. The backend patch enables the new names in the API; the existing frontend selector may still list only the original roles. Use the API below until the selector supports them.
+Open the account in Project1B administration, select **Caption data reviewer** or **Caption data admin**, preserve its other roles, and save. The companion patch adds both choices to the selector. The API example below supports scripted assignment.
 
 `PUT /api/admin/workers/{worker_id}/roles` **replaces the complete role set; preserve unrelated grants.** In the main site's browser console, read current roles and add the caption role:
 

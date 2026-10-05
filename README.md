@@ -99,7 +99,7 @@ python3 -B project1B_internal/tests/storage.py
 
 The local mock database seeds `caption_data_admin` and `caption_data_reviewer` in its role catalog and grants them to matching fictional accounts. Existing users/grants remain unchanged. Authentication returns these roles directly. Caption administrators display as dataset admins; caption reviewers display as reviewers. Existing Project1B `admin` retains its current authority, and the current all-authenticated caption editing policy remains in effect.
 
-For the main Project1B deployment, `deploy/caption_data_roles.sql` expands `ck_user_roles_role` transactionally, preserving existing grants. `deploy/project1b-caption-roles.patch` updates the backend model and existing admin role-assignment API allowlist. Apply both through the main Project1B deployment process, then assign roles through its existing admin endpoint or `scripts/grant_role.py`. These prepared files are not applied to the live database by the internal-site installer; no production users receive new grants automatically.
+For the main Project1B deployment, `deploy/caption_data_roles.sql` expands `ck_user_roles_role` transactionally, preserving existing grants. `deploy/project1b-caption-roles.patch` updates the backend model, admin API allowlist, and account role selector. Apply both through the main Project1B deployment process, then assign roles through the existing admin UI or endpoint. These prepared files are not applied to the live database by the internal-site installer; no production users receive new grants automatically.
 
 ## Deploy on the existing server
 
