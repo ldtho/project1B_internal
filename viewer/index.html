@@ -583,8 +583,8 @@ const qaLight = e => e.qa ? `<span class="light ${e.qa}" title="${e.qa === 'corr
 function showMe() {
   $('#me').innerHTML = ME ? `👤 <b>${esc(ME.name)}</b>${ME.role === 'admin' ? ' (admin)' : ''}<button id="logout">${AUTH ? 'sign out' : 'switch'}</button>`
                           : '<button id="logout">log in</button>';
-  // a reviewer picks between their own episodes and all of them; an admin can also pick anyone's
-  const names = AUTH || ME?.role === 'admin' ? [...ROSTER.reviewers, ...ROSTER.admins] : [];
+  // any authenticated user can inspect an assignee's episodes and QA progress
+  const names = ME ? [...ROSTER.reviewers, ...ROSTER.admins] : [];
   const sel = $('#whoSel'), keep = sel.value;
   sel.innerHTML = `${ME ? '<option value="@me">my assigned episodes</option>' : ''}<option value="">all episodes</option>`
     + names.map(n => `<option value="${esc(n)}">assigned to ${esc(n)}</option>`).join('');
@@ -1640,7 +1640,7 @@ $('#statsBody').addEventListener('click', ev => {   // a stats row selects that 
   if (FILTERED.length && !FILTERED.includes(CUR)) open(FILTERED[0].id);
 });
 $('#qaStatsBody').addEventListener('click', ev => {
-  const r = ev.target.closest('tr.qa'); if (!r || ME?.role !== 'admin') return;
+  const r = ev.target.closest('tr.qa'); if (!r || !ME) return;
   $('#whoSel').value = r.dataset.who; applyFilter();
   if (FILTERED.length && !FILTERED.includes(CUR)) open(FILTERED[0].id);
 });
@@ -1669,10 +1669,10 @@ function qaTable() {
       ${row('', EPS.filter(e => e.assignee), 'all')}</tbody></table>`;
 }
 function renderQAStats() {
-  const admin = ME?.role === 'admin' && $('#login').hidden;
-  $('#qaStats').hidden = !admin;
-  $('#qaStatsBody').innerHTML = admin ? qaTable() : '';
-  if (!admin) $('#qaStats').open = false;
+  const visible = !!ME && $('#login').hidden;
+  $('#qaStats').hidden = !visible;
+  $('#qaStatsBody').innerHTML = visible ? qaTable() : '';
+  if (!visible) $('#qaStats').open = false;
 }
 // Whole-dataset totals, independent of the list filters.
 function renderStats() {

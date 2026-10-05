@@ -297,6 +297,7 @@ Ask reviewers to save drafts before restart, then refresh their browsers. Assign
 ## 8. Review captions and inspect before/after
 
 1. Filter samples by dataset, split, assignee, QA state, or search text.
+   **QA progress** is available to every authenticated user. Expand it to see assigned, corrected, unchanged, remaining, and completion totals per assignee. Click an assignee's row to view their episodes.
 2. Select a sample. Play the video and inspect instruction, sub-task, and atomic captions.
    Drag the video captions to move the block within the frame; its position is remembered in this browser. Double-click to reset. When focused, arrow keys move it and **Home** resets it. Position also adapts to video resizing and the page's fullscreen button.
 3. Edit caption text and cue timing. Use the existing add/remove controls where needed.

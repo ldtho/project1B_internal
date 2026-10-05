@@ -37,6 +37,35 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.equal((await context.request.get(`${base}/api/admin/videos`)).status(), 403);
   const user = await (await context.request.get(`${base}/api/auth/me`)).json();
   assert.equal(user.user_id, 'mock-worker'); assert.deepEqual(user.roles, ['worker']);
+  const checkQAProgress = async () => {
+    await page.locator('#edSave').waitFor();
+    assert.equal(await page.locator('#qaStats').isVisible(), true);
+    await page.evaluate(() => {
+      window.qaProgressOriginal = { EPS, ROSTER, CUR, FILTERED, ME, who: $('#whoSel').value, open: $('#qaStats').open };
+      const episode = { ...CUR, duration: 8 };
+      EPS = [{ ...episode, assignee: 'QA reviewer fixture', qa: 'corrected' },
+        { ...episode, id: 'qa-confirmed-fixture', assignee: 'QA admin fixture', qa: 'confirmed' },
+        { ...episode, id: 'qa-pending-fixture', assignee: 'QA reviewer fixture', qa: null }];
+      CUR = EPS[0]; FILTERED = EPS;
+      ROSTER = { reviewers: ['QA reviewer fixture'], admins: ['QA admin fixture'] };
+      showMe(); $('#qaStats').open = true;
+    });
+    assert.deepEqual(await page.locator('#qaStatsBody tr.all td.num').allTextContents(),
+      ['3', '0.0 h', ' 1', '0.00 h', ' 1', '0.00 h', '1', '67%']);
+    await page.locator('#qaStatsBody tr[data-who="QA reviewer fixture"]').click();
+    assert.equal(await page.locator('#whoSel').inputValue(), 'QA reviewer fixture');
+    assert.deepEqual(await page.evaluate(() => FILTERED.map(episode => episode.qa)), ['corrected', null]);
+    await page.evaluate(() => { ME = null; showMe(); });
+    assert.equal(await page.locator('#qaStats').isHidden(), true);
+    assert.equal(await page.locator('#qaStatsBody').innerHTML(), '');
+    await page.evaluate(() => {
+      const original = window.qaProgressOriginal;
+      ({ EPS, ROSTER, CUR, FILTERED, ME } = original);
+      showMe(); $('#whoSel').value = original.who; $('#qaStats').open = original.open; applyFilter();
+      delete window.qaProgressOriginal;
+    });
+  };
+  await checkQAProgress();
   try {
     grantAdmin(true);
     assert.ok((await (await context.request.get(`${base}/api/auth/me`)).json()).roles.includes('admin'));
@@ -419,6 +448,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.locator('#identifier').fill('admin'); await page.locator('#password').fill('preview-password'); await page.locator('#login-button').click();
   await page.locator('#library-view').waitFor(); await page.locator('.recording-row').first().waitFor();
   await page.getByRole('link', { name: 'Open captioning_data' }).click(); await page.locator('#edSave').waitFor();
+  await checkQAProgress();
   await page.getByRole('button', { name: 'sign out', exact: true }).click(); await page.locator('#login-view').waitFor();
   for (const name of ['caption_data_admin', 'caption_data_reviewer']) {
     const response = await context.request.post(`${base}/api/auth/web/login`, { data: { email: name, password: 'preview-password' } });
@@ -427,6 +457,8 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     assert.equal(responseData.status(), 200);
     assert.equal((await responseData.json()).user.role, name === 'caption_data_admin' ? 'admin' : 'reviewer');
     assert.equal((await context.request.get(`${base}/api/admin/videos`)).status(), 403);
+    await page.goto(`${base}/captioning_data/`);
+    await checkQAProgress();
   }
   assert.deepEqual(errors, []);
   console.log('PASS: mock login/roles; real video; Qwen visibility in edit/view modes, redraw/reload persistence, editing while hidden; Enter editing while playing/paused/view mode, Up atomic/subtask/instruction, empty instruction, parent edit sync, return to playhead; caption mouse/touch drag, bounds, keyboard/reset, position persistence, resize/fullscreen; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; comparison beside video, responsive stacking, collapse and fullscreen; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
