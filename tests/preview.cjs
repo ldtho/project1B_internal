@@ -102,12 +102,11 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.equal(await page.locator('#captionCompare').isVisible(), true);
   assert.equal(await page.locator('#captionCompare > summary').count(), 0);
   assert.equal(await page.locator('#compareBtn').getAttribute('aria-expanded'), 'true');
-  const groupControls = name => page.getByRole('group', { name, exact: true }).evaluate(group => [...group.querySelectorAll('button, input, select')].map(control => control.id));
-  assert.deepEqual(await groupControls('Video controls'), ['rate', 'videoSize', 'fs']);
-  assert.deepEqual(await groupControls('Caption display controls'), ['cc', 'captionOpacity']);
-  assert.deepEqual(await groupControls('Review display controls'), ['compareBtn', 'annotationToggle', 'qwenToggle']);
-  assert.deepEqual(await groupControls('Editing controls'), ['edMode', 'link', 'magnet']);
-  assert.deepEqual(await groupControls('Review actions'), ['reviewFlag', 'reset', 'edDiscard', 'edSave']);
+  const controls = selector => page.locator(selector).evaluate(group => [...group.querySelectorAll('button, input, select')].map(control => control.id));
+  assert.deepEqual(await controls('.cams'), ['cc', 'qwenToggle', 'captionSettingsBtn', 'videoSize', 'rate']);
+  assert.deepEqual(await controls('.tlbar'), ['edMode', 'reset', 'compareBtn', 'reviewFlag', 'link', 'magnet', 'edDiscard', 'edSave']);
+  assert.equal(await page.locator('#annotationToggle, #fs').count(), 0);
+  assert.equal(await page.locator('#selbox').isVisible(), true);
   assert.ok(await page.locator('#selbox').evaluate(card => card.getBoundingClientRect().height <= 96));
   assert.equal(await page.locator('#selbox').evaluate(card => card.nextElementSibling.classList.contains('tlrow')), true);
   await page.locator('.review-media').evaluate(media => media.scrollIntoView({ block: 'start' }));
@@ -132,7 +131,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.ok(narrow.comparison.y >= narrow.video.bottom + 10);
   assert.ok(await page.locator('.review-media').evaluate(element => element.scrollWidth <= element.clientWidth + 1));
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.locator('#fs').click();
+  await page.locator('video').focus(); await page.keyboard.press('f');
   await page.waitForFunction(() => document.fullscreenElement?.id === 'stage');
   assert.ok(await page.locator('#stage').evaluate(element => element.getBoundingClientRect().width >= innerWidth - 1));
   const setCaptionOpacity = async value => {
@@ -149,10 +148,36 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await setCaptionOpacity(100);
   await setCaptionOpacity(35);
   await page.evaluate(() => document.exitFullscreen());
+  assert.equal(await page.locator('#captionSize').isHidden(), true);
+  assert.equal(await page.locator('#captionOpacity').isHidden(), true);
+  await page.locator('#captionSettingsBtn').click();
+  await page.waitForFunction(() => document.querySelector('#captionSettings').matches(':popover-open'));
+  assert.equal(await page.locator('#captionSize').isVisible(), true);
+  assert.equal(await page.locator('#captionOpacity').isVisible(), true);
+  const setCaptionSize = async value => {
+    await page.locator('#captionSize').evaluate((input, value) => { input.value = value; input.dispatchEvent(new Event('input')); }, String(value));
+    assert.equal(await page.locator('#captionSizeValue').textContent(), `${value}%`);
+    assert.equal(await page.locator('#captionSize').getAttribute('aria-valuetext'), `${value}%`);
+    assert.equal(await page.locator('#ovlSub').evaluate(element => parseFloat(getComputedStyle(element).fontSize)), 17 * value / 100);
+    assert.equal(await page.locator('#ovlAtom').evaluate(element => parseFloat(getComputedStyle(element).fontSize)), 16 * value / 100);
+  };
+  await setCaptionSize(50); await setCaptionSize(200); await setCaptionSize(150);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#captionSettings').isHidden(), true);
+  await page.locator('#captionSettingsBtn').click();
+  await page.locator('#captionSettingsBtn').click();
+  assert.equal(await page.locator('#captionSettings').isHidden(), true);
+  await page.locator('#captionSettingsBtn').click();
+  await page.locator('.title').click();
+  assert.equal(await page.locator('#captionSettings').isHidden(), true);
   await page.reload(); await page.locator('#edSave').waitFor();
   assert.equal(await page.locator('#captionOpacity').inputValue(), '35');
+  assert.equal(await page.locator('#captionSize').inputValue(), '150');
+  assert.equal(await page.locator('#ovlAtom').evaluate(element => getComputedStyle(element).fontSize), '24px');
   assert.equal(await page.locator('#ovlAtom').evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0.35)');
-  await setCaptionOpacity(72);
+  await page.locator('#captionSettingsBtn').click();
+  await setCaptionOpacity(72); await setCaptionSize(100);
+  await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
   const captionsInside = () => page.waitForFunction(() => {
     const frame = document.querySelector('#stage').getBoundingClientRect(), box = document.querySelector('#ovl').getBoundingClientRect();
@@ -187,7 +212,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.locator('#videoSize').evaluate(input => { input.value = '50'; input.dispatchEvent(new Event('input')); });
   await page.waitForFunction(() => document.querySelector('#videos').style.width === '50%');
   assert.ok(await captionsInside());
-  await page.locator('#fs').click();
+  await page.locator('video').focus(); await page.keyboard.press('f');
   await page.waitForFunction(() => document.fullscreenElement?.id === 'stage');
   assert.ok(await captionsInside());
   await page.evaluate(() => document.exitFullscreen());
@@ -287,7 +312,6 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   page.once('dialog', dialog => dialog.accept());
   await page.locator('.tlbar label.switch').click();
   assert.equal(await page.locator('#edMode').isChecked(), false);
-  await page.locator('#annotationToggle').uncheck();
   await page.locator('video').focus(); await page.keyboard.press('Enter');
   assert.equal(await page.locator('#edMode').isChecked(), true);
   assert.equal(await page.locator('#selbox').isVisible(), true);
@@ -395,11 +419,9 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.equal(await page.locator('#laneIns').innerText(), 'Edited fallback instruction');
   assert.equal(await page.locator('#ovlSub').innerText(), 'Edited fallback instruction');
   assert.ok(await page.evaluate(() => [...document.querySelector('video').textTracks[0].cues].some(cue => cue.text === 'Edited fallback instruction')));
-  await page.locator('#annotationToggle').uncheck();
-  assert.equal(await page.locator('#selbox').isHidden(), true);
+  assert.equal(await page.locator('#selbox').isVisible(), true);
   await seek(duration * 0.4);
   assert.equal(await page.locator('#ovlAtom').isVisible(), true);
-  await page.locator('#annotationToggle').check();
   assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Second action');
   await seek(duration * 0.23);
   const movedEnd = page.locator('#levels tr[data-l="atoms"][data-k="0"] input[data-f="end"]');
@@ -412,11 +434,9 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await seek(duration * 0.3);
   assert.equal(await page.locator('#selTx').innerText(), 'Subtask fixture');
   await page.locator('.tlbar label.switch').click();
-  await page.locator('#annotationToggle').uncheck();
-  await page.evaluate(initial => { EDIT = null; renderView(CUR, initial, 0); }, initial);
-  assert.equal(await page.locator('#annotationToggle').isChecked(), false);
-  assert.equal(await page.locator('#selbox').isHidden(), true);
-  await page.locator('#annotationToggle').check();
+  await page.evaluate(initial => { store('selected-annotation', '0'); EDIT = null; renderView(CUR, initial, 0); }, initial);
+  assert.equal(await page.locator('#annotationToggle').count(), 0);
+  assert.equal(await page.locator('#selbox').isVisible(), true);
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
   await page.evaluate(() => document.querySelector('video').pause());
   if (await page.locator('#captionCompare').isHidden()) await page.locator('#compareBtn').click();
@@ -523,6 +543,14 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.ok(Math.abs(await page.evaluate(() => document.querySelector('video').currentTime) - target) < 1);
   await page.evaluate(() => document.querySelector('video').pause());
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#captionSettingsBtn').click();
+  await page.waitForFunction(() => {
+    const panel = document.querySelector('#captionSettings'), box = panel.getBoundingClientRect();
+    return panel.matches(':popover-open') && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight;
+  });
+  assert.ok(await page.locator('#captionSettings').evaluate(panel => panel.scrollWidth <= panel.clientWidth + 1));
+  await page.locator('#captionSettings').screenshot({ path: path.join(state, 'captioning-data-settings-mobile.png') });
+  await page.keyboard.press('Escape');
   await page.locator('#compareBtn').click(); await page.locator('#compareBtn').click();
   await page.waitForFunction(() => document.body.classList.contains('noside'));
   assert.equal(await page.locator('#cmpContent td').first().evaluate(element => getComputedStyle(element).display), 'block');
@@ -554,7 +582,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     await page.keyboard.press('Control+z');
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: mock login/roles; real video; Qwen visibility in edit/view modes, redraw/reload persistence, editing while hidden; Enter editing while playing/paused/view mode, Up atomic/subtask/instruction, empty instruction, parent edit sync, return to playhead; caption mouse/touch drag, bounds, keyboard/reset, position persistence, resize/fullscreen; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; comparison beside video, responsive stacking, collapse and fullscreen; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
+  console.log('PASS: mock login/roles; real video; restored control order; caption settings size/background, persistence, dismissal and mobile bounds; selected annotation always visible; Qwen visibility; Enter/Up editing and live caption sync; caption drag, bounds, persistence, resize and F fullscreen; Space playback, trim/extend, undo and typing isolation; isolated corrections; before/after drafts, timing, text safety, saved/reverted history and responsive layout; admin navigation; logout.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   try { if (restoreCaptions) await restoreCaptions(); }
   catch (error) { console.error(error); process.exitCode = 1; }

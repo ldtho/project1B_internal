@@ -299,9 +299,9 @@ Ask reviewers to save drafts before restart, then refresh their browsers. Assign
 1. Filter samples by dataset, split, assignee, QA state, or search text.
    **QA progress** is available to every authenticated user. Expand it to see assigned, corrected, unchanged, remaining, and completion totals per assignee. Click an assignee's row to view their episodes.
 2. Select a sample. Play the video and inspect instruction, sub-task, and atomic captions.
-   Video controls group speed, size, and fullscreen; caption controls group visibility and background opacity. Comparison/display options, editing controls, and save actions sit below the video. The compact selected caption sits directly above the timeline; crop and review-reason fields sit below it.
-   Drag the video captions to move the block within the frame; its position is remembered in this browser. Double-click to reset. When focused, arrow keys move it and **Home** resets it. Position also adapts to video resizing and the page's fullscreen button.
-   **Caption background** adjusts background opacity from 0% (transparent) to 100% (solid). Text stays fully visible; the setting is remembered in this browser.
+   Caption controls, video size, and speed sit above the video; editing and save actions sit below it. Selected annotation stays visible directly above the timeline; crop and review-reason fields sit below it.
+   Drag the video captions to move the block within the frame; its position is remembered in this browser. Double-click to reset. When focused, arrow keys move it and **Home** resets it. Position also adapts to video resizing and the **F** fullscreen shortcut.
+   **Caption Settings** contains caption size (50–200%) and background opacity (0–100%). Text stays fully visible; both settings are remembered in this browser.
 3. Edit caption text and cue timing. Use the existing add/remove controls where needed.
    **Hide Qwen suggestions** hides check notes and suggestion controls in the selected annotation and caption table. **Show Qwen suggestions** restores them. This preference persists in the browser; captions and saved corrections are unchanged.
    **Flag for Review** opens a required reason field. Describe what needs another inspection, then **Save** to persist the flag and reason. **Remove Review Flag** clears both. Flags appear in the **flagged for review** flag filter, independently of normal **corrected** or **saved unchanged** QA status and completion totals.
@@ -321,7 +321,7 @@ Crops are reversible time selections, not rewritten video files. Training export
 
 Select saved versions to inspect reviewer changes. **Before selected change** uses the state that reviewer started from; **Original captions** uses that revision's baseline. Editor and save time identify revisions. Comparison is read-only and does not restore the selected version into the editor.
 
-**Reset** appends a revert to original captions and keeps prior versions. To restore an earlier correction, inspect it, reapply the content, and save a new version.
+**Discard** drops unsaved changes and restores the last saved state. **Reset** appends a revert to original captions and keeps prior versions. To restore an earlier correction, inspect it, reapply the content, and save a new version.
 
 Concurrent saves return `409` rather than overwriting another reviewer's work. Preserve your intended text, reopen the sample to load its current version, reconcile the changes, then save. On mobile, opening comparison hides the episode list and stacks Before/After; use **☰ episodes** to reopen the list.
 
