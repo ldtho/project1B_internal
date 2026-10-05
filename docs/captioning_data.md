@@ -302,6 +302,8 @@ Ask reviewers to save drafts before restart, then refresh their browsers. Assign
    Drag the video captions to move the block within the frame; its position is remembered in this browser. Double-click to reset. When focused, arrow keys move it and **Home** resets it. Position also adapts to video resizing and the page's fullscreen button.
 3. Edit caption text and cue timing. Use the existing add/remove controls where needed.
    **Hide Qwen suggestions** hides check notes and suggestion controls in the selected annotation and caption table. **Show Qwen suggestions** restores them. This preference persists in the browser; captions and saved corrections are unchanged.
+   **Flag for Review** marks a video for another inspection; **Remove Review Flag** clears it. Click **Save** to persist the flag. Flagged episodes appear in **flagged for review** and **not reviewed yet**, and do not count as completed QA.
+   Expand **Crop video** above the timeline. Set start/end from the playhead or enter times; shaded regions are excluded. **Preview crop** limits playback to the retained range; turn it off to inspect outside that range. **Clear crop** restores the full video. Crop changes support undo/discard and persist with **Save**.
 4. Inspect **Before / after** beside the video (below it on narrow screens). It opens by default and scrolls independently on wide screens; its summary or the **Before / after** button collapses it. Default comparison is original versus current saved captions or unsaved draft.
 5. Inspect removed words, added words, timing changes, and added/removed cues. **Show unchanged captions** includes the untouched parts. Timestamp buttons seek the video to either version's cue.
 6. Click **Save** and wait for success. The next episode in the current filtered list opens automatically; saving the last episode stays there. Failed saves keep the current episode and draft. Saved revisions remain available when you reopen the episode.
@@ -311,6 +313,9 @@ Keyboard shortcuts (outside text/time fields): **Space** pauses/resumes video. I
 **Enter** pauses playback, enables Edit mode if needed, and focuses the selected annotation caption. **Up** moves that editor from atomic to sub-task to instruction, skipping missing sub-tasks. Instruction text is editable. **Enter/Escape** leaves the text field; seeking or resuming playback restores the caption at the playhead. Up/Down in table time fields still adjusts timing.
 
 Save without semantic changes marks a sample **confirmed**; a changed save marks it **corrected**. These are QA states, not separate administrator approvals.
+Saved flags override these states until cleared. Before/after history includes flags and crop ranges. Reset restores original captions, removes the crop and review flag, and retains saved revisions.
+
+Crops are reversible time selections, not rewritten video files. Training exports preserve the source video, duration, and caption timestamps, adding `video_crop: {start, end}` with `video_crop_timestamp_origin: "episode"`. A training consumer must apply these bounds to the existing episode clip, intersect captions with the retained range, and subtract the crop start when creating a cropped sample. Exclude rows with `review_flag: true` (`training_ready: false`) until their flag is cleared.
 
 Select saved versions to inspect reviewer changes. **Before selected change** uses the state that reviewer started from; **Original captions** uses that revision's baseline. Editor and save time identify revisions. Comparison is read-only and does not restore the selected version into the editor.
 

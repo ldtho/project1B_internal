@@ -3,8 +3,8 @@
   "base_commit": "ad881fddf8c1ab25a3875eddcb7769e89b028198",
   "source_state": "vendored viewer with captioning_data integration, before/after, and playhead caption synchronization",
   "files": {
-    "server.py": "afdfdd6b6cc7e7d2994152bd91cc01aa6c05222580f61e6c52ef509952546340",
-    "index.html": "9d66d743dd7293b7457c18f60b378c0099388e5d1b6cddcc58fd74ac005bbd8d"
+    "server.py": "39920b89181a9474b06ad688de3556ee4a4d96a6dbf1211c923068b5ee31d0e2",
+    "index.html": "ca4b1b110d1808ca33531f5fcc807ab08890ce90c171172d72d3dc1bc99134b1"
   },
   "dependencies": "Imported helpers remain in the VR-finetune-VLM deployment checkout; installer snapshots them privately."
 }

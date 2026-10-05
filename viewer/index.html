@@ -226,6 +226,10 @@
   .light { display:inline-block; width:10px; height:10px; border-radius:50%; flex:none; }
   .light.corrected { background:#16a34a; box-shadow:0 0 0 2px #bbf7d0; }
   .light.confirmed { background:#f59e0b; box-shadow:0 0 0 2px #fde68a; }
+  .light.flagged { background:var(--bad); box-shadow:0 0 0 2px #fecaca; }
+  .crop-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 0; }
+  .crop-controls input[type="text"] { width:75px; }
+  .crop-mask { position:absolute; top:0; bottom:0; background:rgba(15,23,42,.3); pointer-events:none; z-index:4; }
   .badge.qa.corrected { background:#dcfce7; color:#166534; } .badge.qa.confirmed { background:#ffedd5; color:#9a3412; }
   .badge.who { background:#e0e7ff; color:#3730a3; }
   #qaStats tr.qa { cursor:pointer; } #qaStats tr.qa:hover td { background:#f0f3f7; }
@@ -360,6 +364,7 @@
     <option value="todo">not reviewed yet</option>
     <option value="corrected">● corrected</option>
     <option value="confirmed">● saved unchanged</option>
+    <option value="flagged">⚑ flagged for review</option>
   </select>
   <span class="count" id="count"></span>
   <span id="me"></span>
@@ -579,7 +584,8 @@ const clamp = (t, a, b) => Math.max(a, Math.min(b, t));
 // The QA login: {name, role, token} from /api/login, kept in this browser; null = browsing read-only.
 let ME = null, ROSTER = { reviewers: [], admins: [] };
 const canSave = e => ME && (AUTH || ME.role === 'admin' || e.assignee === ME.name);
-const qaLight = e => e.qa ? `<span class="light ${e.qa}" title="${e.qa === 'corrected' ? 'corrected' : 'saved unchanged'} by ${esc(e.edited?.editor)} · ${esc(e.edited?.time)}"></span>` : '';
+const qaLabel = qa => qa === 'corrected' ? 'corrected' : qa === 'flagged' ? 'flagged for review' : 'saved unchanged';
+const qaLight = e => e.qa ? `<span class="light ${e.qa}" title="${qaLabel(e.qa)} by ${esc(e.edited?.editor)} · ${esc(e.edited?.time)}"></span>` : '';
 function showMe() {
   $('#me').innerHTML = ME ? `👤 <b>${esc(ME.name)}</b>${ME.role === 'admin' ? ' (admin)' : ''}<button id="logout">${AUTH ? 'sign out' : 'switch'}</button>`
                           : '<button id="logout">log in</button>';
@@ -696,7 +702,7 @@ function applyFilter() {
   const scene = $('#sceneSel').value, level = $('#levelSel').value;
   const who = $('#whoSel').value === '@me' ? ME?.name : $('#whoSel').value;
   FILTERED = EPS.filter(e => (!ds || e.dataset === ds)
-                             && (!who || e.assignee === who) && (!qa || (qa === 'todo' ? !e.qa : e.qa === qa))
+                             && (!who || e.assignee === who) && (!qa || (qa === 'todo' ? !e.qa || e.qa === 'flagged' : e.qa === qa))
                               && (!flag || (flag === '@flagged' ? e.flags.length : flag === '@clear' ? !e.flags.length : e.flags.includes(flag)))
                               && (!scene || e.scene === scene) && (!level || levelLabel(e) === level)
                               && (!HITS || HITS.has(e.id))
@@ -782,7 +788,7 @@ function renderView(e, d, t0, sel0) {
     <div class="title"><h2 title="filter to this task">${esc(taskLabel(e) || '(no task)')}</h2><code>${esc(e.uid)}</code>
       ${episodeTags(d)}
       ${d.assignee ? `<span class="badge who">assigned to ${esc(d.assignee)}</span>` : ''}
-      ${d.qa ? `<span class="badge qa ${d.qa}">${qaLight(d)} ${d.qa === 'corrected' ? 'corrected' : 'saved unchanged'} by ${esc(d.edited.editor)} · ${esc(d.edited.time)}</span>` : ''}
+      ${d.qa ? `<span class="badge qa ${d.qa}">${qaLight(d)} ${qaLabel(d.qa)} by ${esc(d.edited.editor)} · ${esc(d.edited.time)}</span>` : ''}
       </div>
     <div class="kv">${fmt(e.duration)} · <b>1</b> instruction → <b>${d.subtasks.length || '—'}</b> sub-tasks → <b>${d.atomic.length}</b> atomic lines
       ${hasSub ? ` (<b>${(d.atomic.length / d.subtasks.length).toFixed(1)}</b> per sub-task)` : ''} · <code>${esc(d.source)}</code></div>
@@ -813,17 +819,28 @@ function renderView(e, d, t0, sel0) {
       <button id="reset" title="restore original captions; saved versions stay in history">↺ reset</button>`
         : `<span class="kv" style="margin:0">view only${e.assignee ? ` · assigned to ${esc(e.assignee)}` : ''}${ME ? '' : ' · log in to edit'}</span>`}
       <button id="compareBtn" aria-controls="captionCompare" aria-expanded="${!!comparisonOpen}">Before / after</button>
+      <button id="reviewFlag" ${canSave(e) ? '' : 'disabled'} title="Toggle review flag, then Save">Flag for Review</button>
       <span class="edonly">
         <label title="when a start or end moves, a neighbour that shares it moves along; off, a caption stops at its neighbours"><input type="checkbox" id="link" ${LINK ? 'checked' : ''}> move shared boundaries</label>
         <label title="a dragged edge that comes near the playhead lands on it"><input type="checkbox" id="magnet" ${MAGNET ? 'checked' : ''}> magnet</label>
         <span id="edmsg"></span></span><span class="sp"></span>
       <span class="edonly"><button id="edDiscard" title="drop the unsaved changes">discard</button><button id="edSave" class="pri" title="save (Ctrl+S)">save</button></span></div>
     <div class="selbox" id="selbox" ${ANNOTATIONON ? '' : 'hidden'}></div>
+    <details id="cropTool" ${d.crop ? 'open' : ''}><summary>Crop video</summary>
+      <div class="crop-controls">
+        <label>Start <input type="text" id="cropStart" aria-label="Crop start" ${canSave(e) ? '' : 'disabled'}></label>
+        <button id="cropSetStart" ${canSave(e) ? '' : 'disabled'}>Start at playhead</button>
+        <label>End <input type="text" id="cropEnd" aria-label="Crop end" ${canSave(e) ? '' : 'disabled'}></label>
+        <button id="cropSetEnd" ${canSave(e) ? '' : 'disabled'}>End at playhead</button>
+        <button id="cropClear" ${canSave(e) ? '' : 'disabled'}>Clear crop</button>
+        <label><input type="checkbox" id="cropPreview" checked> Preview crop</label><span id="cropStatus"></span>
+      </div><div class="kv">Crop keeps this time range. Original media and caption timestamps are preserved. Save to store changes.</div>
+    </details>
     <div class="tlrow"><div class="tlgut"><span class="zoom"><button id="zOut" title="zoom out">−</button><button id="zFit" title="fit the whole episode">fit</button><button id="zIn" title="zoom in">+</button></span><span class="ins">1 instruction</span><span class="sub">2 sub-task</span><span class="atom">3 atomic</span></div>
     <div class="tlwrap"><div class="tlc"><div class="ruler"></div><div class="tl">
       <div class="lane ins" id="laneIns"></div>
       <div class="lane sub${hasSub ? '' : ' none'}" id="laneSub">${hasSub ? '' : `no sub-task level in ${esc(e.dataset)}`}</div>
-      <div class="lane atom" id="laneAtom"></div></div><div class="head"></div></div></div></div>
+      <div class="lane atom" id="laneAtom"></div></div><div class="head"></div><div class="crop-mask" id="cropLeft"></div><div class="crop-mask" id="cropRight"></div></div></div></div>
     <div class="legend"><span><i style="background:var(--ins-bg)"></i>1 instruction (episode)</span>
       <span><i style="background:var(--sub-bg)"></i>2 sub-task (${esc(d.subtask_source || 'native annotation')})</span>
       <span><i style="background:var(--atom-bg)"></i>3 atomic action (training target)</span>
@@ -839,10 +856,11 @@ function renderView(e, d, t0, sel0) {
   const compareTime = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, '0')}`;
   function drawComparison() {
     const levels = lv();
-    const current = { instruction: levels.ins, subtasks: levels.subs.map(s => ({ ...s, text: s.desc })), atomic: levels.atoms };
+    const current = { instruction: levels.ins, subtasks: levels.subs.map(s => ({ ...s, text: s.desc })), atomic: levels.atoms,
+      crop: EDIT ? EDIT.crop : d.crop, review_flag: EDIT ? EDIT.review_flag : d.review_flag };
     const afterValue = $('#cmpAfter').value;
     const afterRevision = versions.find(r => String(r.version) === (afterValue === 'current' ? String(d.version) : afterValue));
-    const saved = { instruction: d.instruction, subtasks: d.subtasks.map(s => ({ ...s, text: s.desc })), atomic: d.atomic };
+    const saved = { instruction: d.instruction, subtasks: d.subtasks.map(s => ({ ...s, text: s.desc })), atomic: d.atomic, crop: d.crop, review_flag: d.review_flag };
     const selected = value => value === 'current' ? current : value === '0' ? d.original : versions.find(r => String(r.version) === value)?.captions;
     const beforeValue = $('#cmpBefore').value;
     const previous = afterValue === 'current' && EDIT?.dirty ? saved
@@ -867,6 +885,8 @@ function renderView(e, d, t0, sel0) {
     $('#cmpMeta').textContent = `Before: ${describe(beforeValue, true)}. After: ${describe(afterValue)}.`;
     let changes = 0;
     const groups = [ ['Instruction', [[{ text: before.instruction }, { text: after.instruction }]], false],
+      ['Video crop', [[{ text: before.crop ? `${fmt(before.crop.start)} – ${fmt(before.crop.end)}` : 'Full video' }, { text: after.crop ? `${fmt(after.crop.start)} – ${fmt(after.crop.end)}` : 'Full video' }]], false],
+      ['Review flag', [[{ text: before.review_flag ? 'Flagged for review' : 'Not flagged' }, { text: after.review_flag ? 'Flagged for review' : 'Not flagged' }]], false],
       ['Sub-tasks', captionPairs(before.subtasks, after.subtasks), true],
       ['Atomic actions', captionPairs(before.atomic, after.atomic), true] ];
     const body = groups.map(([title, pairs, timed]) => {
@@ -888,7 +908,7 @@ function renderView(e, d, t0, sel0) {
       }).join('');
       return rows ? `<table><caption>${title}</caption><thead><tr><th scope="col">Before</th><th scope="col">After</th></tr></thead><tbody>${rows}</tbody></table>` : '';
     }).join('');
-    $('#cmpCount').textContent = changes ? `${changes} changed ${changes === 1 ? 'caption' : 'captions'}` : 'No changes';
+    $('#cmpCount').textContent = changes ? `${changes} changed ${changes === 1 ? 'item' : 'items'}` : 'No changes';
     $('#cmpContent').innerHTML = body || '<p class="cmp-empty">Captions match. Select a saved version or show unchanged captions to inspect them.</p>';
   }
   for (const selector of ['#cmpBefore', '#cmpAfter', '#cmpUnchanged']) $(selector).addEventListener('change', drawComparison);
@@ -1091,6 +1111,7 @@ function renderView(e, d, t0, sel0) {
     $('.tlbar').classList.toggle('on', !!EDIT);
     if (EDIT) saveBtn();
     drawComparison();
+    drawReviewTools();
   };
   // Save is open to the assignee and the admins, changed or not: an unchanged save marks the episode checked (orange).
   const saveBtn = () => {
@@ -1107,7 +1128,7 @@ function renderView(e, d, t0, sel0) {
     if (inPlace) { syncTrack(); follow(true); } else drawLanes();
   };
   // undo / redo: a snapshot of the three levels before each change
-  const snap = () => JSON.stringify({ ins: EDIT.ins, subs: EDIT.subs, atoms: EDIT.atoms });
+  const snap = () => JSON.stringify({ ins: EDIT.ins, subs: EDIT.subs, atoms: EDIT.atoms, review_flag: EDIT.review_flag, crop: EDIT.crop });
   const saveState = () => { EDIT.undo.push(snap()); if (EDIT.undo.length > 200) EDIT.undo.shift(); EDIT.redo = []; };
   const undo = (from, to, what) => {
     if (!from.length) return msg(`nothing to ${what}`);
@@ -1150,6 +1171,7 @@ function renderView(e, d, t0, sel0) {
     Object.assign(e, { instruction: j.instruction, n_sub: j.subtasks.length, n_atomic: j.atomic.length,
                        sub_durations: j.sub_durations, atomic_durations: j.atomic_durations,
                        partial: j.partial, edited: j.edited, qa: j.qa, version: j.version,
+                       review_flag: j.review_flag, crop: j.crop,
                        annotation_levels: j.annotation_levels, annotation_level: j.annotation_level, flags: j.flags });
     applyFilter();
     renderStats();
@@ -1164,7 +1186,7 @@ function renderView(e, d, t0, sel0) {
     if (!canSave(e)) return msg($('#edSave').title, true);
     const index = FILTERED.indexOf(e), next = index < 0 ? [] : FILTERED.slice(index + 1);
     msg('saving …'); $('#edSave').disabled = true;
-    post('/api/edit', { ...(!AUTH && { token: ME.token }), id: e.id, version: EDIT.version, instruction: EDIT.ins, subtasks: EDIT.subs, atomic: EDIT.atoms })
+    post('/api/edit', { ...(!AUTH && { token: ME.token }), id: e.id, version: EDIT.version, instruction: EDIT.ins, subtasks: EDIT.subs, atomic: EDIT.atoms, review_flag: EDIT.review_flag, crop: EDIT.crop })
       .then(j => done(j, next), err => { if (CUR === e) { msg(err.message, true); $('#edSave').disabled = false; } });
   };
 
@@ -1281,9 +1303,52 @@ function renderView(e, d, t0, sel0) {
   const startEdit = () => {
     EDIT = { ins: d.instruction, subs: d.subtasks.map(s => ({ start: s.start, end: s.end, text: s.desc, check: s.check })),
              atoms: d.atomic.map(a => ({ start: a.start, end: a.end, text: a.text })), version: d.version, dirty: false,
+             review_flag: !!d.review_flag, crop: d.crop ? { ...d.crop } : null,
              undo: [], redo: [], typing: false };
     drawTable(); drawLanes();
   };
+  function drawReviewTools() {
+    const flagged = EDIT ? EDIT.review_flag : d.review_flag, crop = EDIT ? EDIT.crop : d.crop;
+    $('#reviewFlag').textContent = flagged ? 'Remove Review Flag' : 'Flag for Review';
+    $('#reviewFlag').setAttribute('aria-pressed', String(!!flagged));
+    $('#cropStart').value = fmt(crop?.start ?? 0); $('#cropEnd').value = fmt(crop?.end ?? dur);
+    $('#cropLeft').style.left = '0'; $('#cropLeft').style.width = `${100 * (crop?.start ?? 0) / dur}%`;
+    $('#cropRight').style.right = '0'; $('#cropRight').style.width = `${100 * (dur - (crop?.end ?? dur)) / dur}%`;
+    $('#cropStatus').textContent = crop ? `${(crop.end - crop.start).toFixed(1)} s retained` : 'Full video';
+  }
+  const ensureEditing = () => {
+    if (!canSave(e) || $('#edSave').disabled && EDIT) return false;
+    if (!EDIT) { EDITON = true; store('edmode', '1'); $('#edMode').checked = true; startEdit(); }
+    return true;
+  };
+  const constrainCrop = event => {
+    const crop = EDIT ? EDIT.crop : d.crop;
+    if (!crop || !$('#cropPreview').checked) return;
+    if (event?.type === 'play' && v.currentTime >= crop.end) v.currentTime = crop.start;
+    if (v.currentTime >= crop.end) v.pause();
+    if (v.currentTime < crop.start || v.currentTime > crop.end) v.currentTime = clamp(v.currentTime, crop.start, crop.end);
+  };
+  const setCrop = crop => {
+    if (!ensureEditing()) return;
+    if (crop && (!Number.isFinite(crop.start) || !Number.isFinite(crop.end) || crop.start < 0 || crop.end > dur || crop.end - crop.start < 0.1 - 1e-9)) {
+      drawReviewTools(); return msg('Crop must keep at least 0.1 s inside the video.', true);
+    }
+    if (crop?.start === 0 && crop?.end === dur) crop = null;
+    if (JSON.stringify(crop) === JSON.stringify(EDIT.crop)) return;
+    saveState(); EDIT.crop = crop; changed(); constrainCrop();
+  };
+  $('#reviewFlag').addEventListener('click', () => {
+    if (!ensureEditing()) return;
+    saveState(); EDIT.review_flag = !EDIT.review_flag; changed(); msg('Review flag changed. Save to store it.');
+  });
+  for (const edge of ['start', 'end']) {
+    const key = edge === 'start' ? 'Start' : 'End';
+    $('#crop' + key).addEventListener('change', () => setCrop({ start: parseT($('#cropStart').value), end: parseT($('#cropEnd').value) }));
+    $('#cropSet' + key).addEventListener('click', () => setCrop({ ...(EDIT ? EDIT.crop : d.crop) || { start: 0, end: dur }, [edge]: now() }));
+  }
+  $('#cropClear').addEventListener('click', () => setCrop(null));
+  $('#cropPreview').addEventListener('change', constrainCrop);
+  for (const event of ['loadedmetadata', 'seeking', 'play', 'timeupdate']) v.addEventListener(event, constrainCrop);
   const editCurrentCaption = (parent = false) => {
     if (!canSave(e)) return;
     v.pause();

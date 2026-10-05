@@ -11,6 +11,7 @@ const python = process.env.DATASETS_PYTHON || 'python3';
 let browser;
 let restoreCaptions;
 const captionState = episode => ({ instruction: episode.instruction,
+  review_flag: !!episode.review_flag, crop: episode.crop ?? null,
   subtasks: episode.subtasks.map(cue => ({ start: cue.start, end: cue.end, text: cue.text ?? cue.desc })),
   atomic: episode.atomic.map(cue => ({ start: cue.start, end: cue.end, text: cue.text })) });
 const grantAdmin = enabled => execFileSync(python, ['-c',
@@ -399,6 +400,34 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.locator('.review-media').scrollIntoViewIfNeeded();
   assert.equal(await page.locator('#captionCompare').evaluate(element => getComputedStyle(element).overflowY), 'auto');
   await page.locator('.review-media').screenshot({ path: path.join(state, 'captioning-data-video-comparison.png') });
+  await page.getByRole('button', { name: 'Flag for Review', exact: true }).click();
+  assert.equal(await page.locator('#reviewFlag').getAttribute('aria-pressed'), 'true');
+  assert.match(await page.locator('#cmpContent').innerText(), /Flagged for review/);
+  await page.getByRole('button', { name: 'Remove Review Flag', exact: true }).click();
+  await page.keyboard.press('Control+z');
+  assert.equal(await page.evaluate(() => EDIT.review_flag), true);
+  await page.locator('#cropTool > summary').click();
+  await page.locator('#cropPreview').uncheck();
+  const testCrop = { start: Math.floor(initial.duration * 0.25 * 10) / 10, end: Math.floor(initial.duration * 0.75 * 10) / 10 };
+  await page.locator('video').evaluate((video, time) => { video.pause(); video.currentTime = time; }, testCrop.start);
+  await page.getByRole('button', { name: 'Start at playhead', exact: true }).click();
+  await page.locator('video').evaluate((video, time) => { video.currentTime = time; }, testCrop.end);
+  await page.getByRole('button', { name: 'End at playhead', exact: true }).click();
+  assert.deepEqual(await page.evaluate(() => EDIT.crop), testCrop);
+  assert.match(await page.locator('#cmpContent').innerText(), /Video crop/);
+  assert.ok(await page.locator('#cropLeft').evaluate(mask => parseFloat(mask.style.width) > 0));
+  await page.getByRole('button', { name: 'Clear crop', exact: true }).click();
+  assert.equal(await page.evaluate(() => EDIT.crop), null);
+  await page.keyboard.press('Control+z');
+  assert.deepEqual(await page.evaluate(() => EDIT.crop), testCrop);
+  await page.locator('#cropStart').fill(String(testCrop.end)); await page.locator('#cropStart').dispatchEvent('change');
+  assert.match(await page.locator('#edmsg').innerText(), /at least 0.1 s/);
+  assert.deepEqual(await page.evaluate(() => EDIT.crop), testCrop);
+  await page.locator('#cropPreview').check();
+  await page.locator('video').evaluate(video => { video.currentTime = 0; });
+  await page.waitForFunction(start => Math.abs(document.querySelector('video').currentTime - start) < 0.05, testCrop.start);
+  await page.locator('video').evaluate(video => { video.currentTime = video.duration; });
+  await page.waitForFunction(end => document.querySelector('video').paused && Math.abs(document.querySelector('video').currentTime - end) < 0.05, testCrop.end);
   await page.locator('#edSave').click();
   await page.waitForFunction(before => EDIT?.version === before + 1, version);
   lastTestVersion = version + 1;
@@ -408,6 +437,16 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.equal(records.at(-1).version, version + 1); assert.match(records.at(-1).source_sha256, /^[a-f0-9]{64}$/);
   assert.deepEqual(records.at(-1).before, captionState(initial));
   assert.deepEqual(records.at(-1).original, initial.original);
+  assert.equal(records.at(-1).review_flag, true); assert.deepEqual(records.at(-1).crop, testCrop);
+  assert.equal(await page.evaluate(() => CUR.qa), 'flagged');
+  await page.locator('#qaSel').selectOption('flagged');
+  assert.ok(await page.evaluate(() => FILTERED.some(episode => episode.id === CUR.id)));
+  await page.locator('#qaSel').selectOption('todo');
+  assert.ok(await page.evaluate(() => FILTERED.some(episode => episode.id === CUR.id)));
+  await page.locator('#qaSel').selectOption('');
+  await page.reload(); await page.locator('#edSave').waitFor();
+  assert.equal(await page.evaluate(() => EDIT.review_flag), true);
+  assert.deepEqual(await page.evaluate(() => EDIT.crop), testCrop);
   const cookies = await context.cookies();
   const csrf = cookies.find(cookie => cookie.name === '__Host-rbt_csrf').value;
   const reverted = await context.request.post(`${base}/captioning_data/api/revert`, {
@@ -420,6 +459,9 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.equal(savedHistory.history.at(-2).captions.instruction, 'Local preview correction');
   assert.equal(savedHistory.history.at(-1).revert, true);
   assert.equal(savedHistory.instruction, savedHistory.original.instruction);
+  assert.equal(savedHistory.review_flag, false); assert.equal(savedHistory.crop, null);
+  assert.equal(savedHistory.history.at(-2).captions.review_flag, true);
+  assert.deepEqual(savedHistory.history.at(-2).captions.crop, testCrop);
   await page.locator('#cmpAfter').selectOption(String(version + 1));
   assert.match(await page.locator('#cmpContent').innerText(), /Local preview correction/);
   assert.match(await page.locator('#cmpMeta').innerText(), /Mock worker/);
@@ -459,6 +501,9 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     assert.equal((await context.request.get(`${base}/api/admin/videos`)).status(), 403);
     await page.goto(`${base}/captioning_data/`);
     await checkQAProgress();
+    await page.getByRole('button', { name: 'Flag for Review', exact: true }).click();
+    assert.equal(await page.evaluate(() => EDIT.review_flag), true);
+    await page.keyboard.press('Control+z');
   }
   assert.deepEqual(errors, []);
   console.log('PASS: mock login/roles; real video; Qwen visibility in edit/view modes, redraw/reload persistence, editing while hidden; Enter editing while playing/paused/view mode, Up atomic/subtask/instruction, empty instruction, parent edit sync, return to playhead; caption mouse/touch drag, bounds, keyboard/reset, position persistence, resize/fullscreen; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; comparison beside video, responsive stacking, collapse and fullscreen; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');

@@ -173,11 +173,15 @@ def qa_status(r: dict, live: dict | None) -> str | None:
     does, so formatting alone never counts as a correction; a row that fails it was corrected by any save."""
     if not live:
         return None
+    if live.get("review_flag"):
+        return "flagged"
+    if live.get("crop"):
+        return "corrected"
     cue = lambda k: [{"start": a, "end": b, "text": t} for a, b, t in parse_cues(r.get(k) or "")]  # noqa: E731
     try:
-        same = clean_edit({"duration": float(r["duration_s"]), "row": r},
-                          {"instruction": r.get("instruction"), "subtasks": cue("subtask"), "atomic": cue("caption")}) \
-            == {k: live[k] for k in LEVELS}
+        original = clean_edit({"duration": float(r["duration_s"]), "row": r},
+                              {"instruction": r.get("instruction"), "subtasks": cue("subtask"), "atomic": cue("caption")})
+        same = {k: original[k] for k in LEVELS} == {k: live[k] for k in LEVELS}
     except ValueError:
         same = False
     return "confirmed" if same else "corrected"
@@ -222,6 +226,8 @@ def episode(dataset: str, path: str, r: dict, recs: list[dict] = (), check: dict
     if r.get("review_reasons"):
         tags.append("review notes")
     tags.extend(k.replace("_", " ") for k, count in (r.get("source_issues") or {}).items() if count)
+    if live and live.get("review_flag"):
+        tags.append("flagged for review")
     return {"id": eid(dataset, r), "uid": r["episode_uid"],
             "dataset": dataset, "split": r["split"], "task": r.get("task_group") or r.get("task", ""),
             "instruction": v.get("instruction", ""), "duration": float(r["duration_s"]),
@@ -238,6 +244,7 @@ def episode(dataset: str, path: str, r: dict, recs: list[dict] = (), check: dict
             "sub_durations": duration_stats(subs), "atomic_durations": duration_stats(atomic),
             "edited": {"editor": live["editor"], "time": live["time"]} if live else None,
             "qa": qa_status(r, live), "assignee": assignee,
+            "review_flag": bool(live and live.get("review_flag")), "crop": live.get("crop") if live else None,
             "check": chk, "n_flag": bool(chk["task"]) + len(chk["subs"])}
 
 
@@ -341,6 +348,19 @@ def clean_edit(e: dict, body: dict) -> dict:
     0 to the end of the video, canonical hand labels -- when the manifest row met them; a row
     that never did (EgoDex test still carries [ego]) is held to the timing ones only."""
     dur = e["duration"]
+    review_flag = body.get("review_flag", e.get("review_flag", False))
+    if type(review_flag) is not bool:
+        raise ValueError("Review flag must be a boolean")
+    crop = body.get("crop", e.get("crop"))
+    if crop is not None:
+        if not isinstance(crop, dict) or set(crop) != {"start", "end"} or any(type(crop[k]) not in (int, float) for k in crop):
+            raise ValueError("Crop requires numeric start and end")
+        a, b = crop["start"], crop["end"]
+        if not 0 <= a < b <= dur or b - a < 0.1 - 1e-9:
+            raise ValueError("Crop must keep at least 0.1 s inside the video")
+        crop = {"start": float(a), "end": float(b)}
+        if a == 0 and b == dur:
+            crop = None
     ins = " ".join(str(body.get("instruction") or "").split())
     if not ins:
         raise ValueError("the instruction is empty")
@@ -372,7 +392,7 @@ def clean_edit(e: dict, body: dict) -> dict:
     except AssertionError as err:
         raise ValueError(f"atomic lines: {str(err).replace('cue ', 'line ')}") from None
     subtask = "\n".join(f"[{a:.3f} - {b:.3f}] {text}" for a, b, text in subs) if e["row"].get("subtask_source") else fmt_cues(subs)
-    return {"instruction": ins, "subtask": subtask, "caption": fmt_cues(atoms)}
+    return {"instruction": ins, "subtask": subtask, "caption": fmt_cues(atoms), "review_flag": review_flag, "crop": crop}
 
 
 def export(sources: list[tuple[str, str]], edits: dict[str, list[dict]], out_dir: Path) -> None:
@@ -389,6 +409,8 @@ def export(sources: list[tuple[str, str]], edits: dict[str, list[dict]], out_dir
                                                          "edited_by": live["editor"], "edited_at": live["time"],
                                                          "edited_by_id": live.get("editor_id"),
                                                          "edit_version": live.get("version", len(edits[eid(dataset_of(dataset, r), r)]))}
+                r |= {"review_flag": live.get("review_flag", False), "video_crop": live.get("crop"),
+                      "video_crop_timestamp_origin": "episode", "training_ready": not live.get("review_flag", False)}
                 n += 1
             rows.append(json.dumps(r))
         out = out_dir / path
@@ -443,6 +465,7 @@ def summary(e: dict) -> dict:
 
 def caption_state(e: dict) -> dict:
     return {"instruction": e["instruction"],
+            "review_flag": e.get("review_flag", False), "crop": e.get("crop"),
             "subtasks": [{"start": s["start"], "end": s["end"], "text": s["desc"]} for s in e["subtasks"]],
             "atomic": [{k: a[k] for k in ("start", "end", "text")} for a in e["atomic"]]}
 
@@ -472,6 +495,7 @@ def detail(e: dict, recs: list[dict] = (), source_sha256: str | None = None) -> 
             entry["before"] = rec.get("before", previous)
             entry["captions"] = entry["original"] if rec.get("revert") else {
                 "instruction": rec["instruction"],
+                "review_flag": rec.get("review_flag", False), "crop": rec.get("crop"),
                 "subtasks": [{"start": a, "end": b, "text": text} for a, b, text in parse_cues(rec["subtask"])],
                 "atomic": [{"start": a, "end": b, "text": text} for a, b, text in parse_cues(rec["caption"])]}
             previous = entry["captions"] if same_source else original

@@ -77,6 +77,38 @@ with tempfile.TemporaryDirectory() as temporary:
     assert archived['available'] and archived['earlier_source']
     assert archived['original']['instruction'] == 'Original' and archived['before']['instruction'] == 'Original'
     assert archived['captions']['instruction'] == 'Corrected instruction'
+    state = datasets.caption_state(replayed)
+    cropped = datasets.clean_edit(replayed, state | {'review_flag': True, 'crop': {'start': 0.2, 'end': 0.8}})
+    cropped_record = record | cropped | {'version': 2, 'before': state, 'original': comparison['original']}
+    cropped_episode = datasets.episode('EgoVerse', source, row, [record, cropped_record])
+    assert cropped_episode['qa'] == 'flagged' and 'flagged for review' in cropped_episode['flags']
+    assert cropped_episode['crop'] == {'start': 0.2, 'end': 0.8}
+    assert datasets.clean_edit(cropped_episode, {'instruction': state['instruction'], 'subtasks': state['subtasks'], 'atomic': state['atomic']}) == cropped
+    assert datasets.episode('EgoVerse', source, row, [record, cropped_record | {'review_flag': False}])['qa'] == 'corrected'
+    for invalid in [True, {}, {'start': True, 'end': 1}, {'start': -0.1, 'end': 1}, {'start': 0, 'end': 2},
+                    {'start': 0.8, 'end': 0.2}, {'start': 0, 'end': 0.01}, {'start': float('nan'), 'end': 1},
+                    {'start': 0, 'end': float('inf')}]:
+        try:
+            datasets.clean_edit(replayed, state | {'crop': invalid})
+            raise AssertionError(f'Accepted invalid crop: {invalid}')
+        except ValueError:
+            pass
+    try:
+        datasets.clean_edit(replayed, state | {'review_flag': 'true'})
+        raise AssertionError('Accepted non-boolean review flag')
+    except ValueError:
+        pass
+    assert datasets.clean_edit(replayed, state | {'crop': {'start': 0, 'end': 1}})['crop'] is None
+    history.write_bytes(encoded + (json.dumps(cropped_record) + '\n').encode())
+    crop_output = root / 'cropped-training'
+    export_training(root, history, crop_output, [('', source)])
+    cropped_export = json.loads((crop_output / source).read_text())
+    assert cropped_export['video'] == row['video'] and cropped_export['caption'] == cropped_record['caption']
+    assert cropped_export['video_crop'] == cropped_episode['crop'] and cropped_export['video_crop_timestamp_origin'] == 'episode'
+    assert cropped_export['review_flag'] is True and cropped_export['training_ready'] is False
+    assert datasets.detail(cropped_episode, [record, cropped_record])['history'][-1]['captions']['crop'] == cropped_episode['crop']
+    assert datasets.episode('EgoVerse', source, row, [record, cropped_record, revert])['crop'] is None
+    history.write_bytes(encoded)
     try:
         export_training(root, history, output, [('', source)])
         raise AssertionError('Overwrote an existing training snapshot')
@@ -110,4 +142,4 @@ with tempfile.TemporaryDirectory() as temporary:
             grants = [x[0] for x in connection.execute('SELECT role FROM user_roles WHERE user_id = ?', (f'mock-{role}',))]
             assert role in grants and 'admin' not in grants
         assert [x[0] for x in connection.execute("SELECT role FROM user_roles WHERE user_id='mock-worker'")] == ['worker']
-print('PASS: locked export; replay; comparison/revert history; training captions/provenance/checksums; immutable snapshots; source drift/corruption refusal; new mock roles.')
+print('PASS: crop/flag validation, replay, reset and training metadata; locked export; comparison/revert history; training captions/provenance/checksums; immutable snapshots; source drift/corruption refusal; new mock roles.')
