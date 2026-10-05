@@ -139,6 +139,37 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     subtasks: [{ i: 0, start: 0, end: duration * 0.75, desc: 'Subtask fixture' }],
     atomic: [{ start: 0, end: duration * 0.25, text: '[both hands] First action' },
       { start: duration * 0.375, end: duration * 0.5, text: '[both hands] Second action' }] };
+  const qwenFixture = { ...fixture,
+    check: { ...fixture.check, task: { old: fixture.instruction, new: 'Suggested instruction', error: 'incorrect' } },
+    subtasks: fixture.subtasks.map(sub => ({ ...sub, check: { old: sub.desc, new: 'Suggested subtask', error: 'incorrect' } })) };
+  await page.evaluate(fixture => renderView(CUR, fixture, 0), qwenFixture);
+  await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
+  assert.ok(await page.locator('#selChk .chk').count());
+  assert.ok(await page.locator('#levels [data-op="sugg"], #levels [data-op="sugg-ins"]').count());
+  const beforeToggle = await page.evaluate(() => JSON.stringify(EDIT));
+  await page.getByRole('button', { name: 'Hide Qwen suggestions', exact: true }).click();
+  const qwenHidden = async () => {
+    for (const element of await page.locator('#view .chk, #selChk, #view [data-op="sugg"], #view [data-op="sugg-ins"]').all()) {
+      assert.equal(await element.isHidden(), true);
+    }
+  };
+  await qwenHidden();
+  assert.equal(await page.evaluate(() => JSON.stringify(EDIT)), beforeToggle);
+  await page.locator('#selIn').fill('[both hands] Editing with suggestions hidden');
+  assert.equal(await page.locator('#levels tr[data-l="atoms"][data-k="0"] .tx').inputValue(), '[both hands] Editing with suggestions hidden');
+  await qwenHidden();
+  await page.evaluate(fixture => { EDIT = null; renderView(CUR, fixture, 0); }, qwenFixture);
+  await page.locator('.tlbar label.switch').click();
+  await qwenHidden();
+  await page.locator('.tlbar label.switch').click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Show Qwen suggestions', exact: true }).waitFor();
+  await page.evaluate(fixture => { EDIT = null; renderView(CUR, fixture, 0); }, qwenFixture);
+  await qwenHidden();
+  await page.getByRole('button', { name: 'Show Qwen suggestions', exact: true }).click();
+  assert.equal(await page.locator('#selChk').isVisible(), true);
+  assert.equal(await page.locator('#levels [data-op="sugg-ins"]').isVisible(), true);
+  await page.evaluate(() => { EDIT = null; });
   await page.evaluate(fixture => renderView(CUR, fixture, 0), fixture);
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
   await page.locator('#selIn').fill('[both hands] ' + 'move the item carefully '.repeat(30));
@@ -398,7 +429,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     assert.equal((await context.request.get(`${base}/api/admin/videos`)).status(), 403);
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: mock login/roles; real video; Enter editing while playing/paused/view mode, Up atomic/subtask/instruction, empty instruction, parent edit sync, return to playhead; caption mouse/touch drag, bounds, keyboard/reset, position persistence, resize/fullscreen; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; comparison beside video, responsive stacking, collapse and fullscreen; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
+  console.log('PASS: mock login/roles; real video; Qwen visibility in edit/view modes, redraw/reload persistence, editing while hidden; Enter editing while playing/paused/view mode, Up atomic/subtask/instruction, empty instruction, parent edit sync, return to playhead; caption mouse/touch drag, bounds, keyboard/reset, position persistence, resize/fullscreen; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; comparison beside video, responsive stacking, collapse and fullscreen; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   try { if (restoreCaptions) await restoreCaptions(); }
   catch (error) { console.error(error); process.exitCode = 1; }

@@ -132,6 +132,8 @@
   .selrow .warn .prev { margin-top:3px; color:var(--fg); font-size:13px; }
   #selChk { border-top:1px solid #f3d2d2; background:#fffafa; padding:6px 12px 8px 16px; }
   #selChk:empty { display:none; }
+  #view.qwen-hidden .chk, #view.qwen-hidden #selChk,
+  #view.qwen-hidden [data-op="sugg"], #view.qwen-hidden [data-op="sugg-ins"] { display:none; }
   #selChk div.chk { border:0; margin:0; padding:0; }
   #selChk div.chk + div.chk { margin-top:6px; padding-top:6px; border-top:1px dashed #f3d2d2; }
   #selChk > button { margin-top:6px; font-size:12px; }
@@ -569,6 +571,7 @@ let LINK = store('link') === '1';         // opt-in: a moved start/end drags the
 let MAGNET = store('magnet') !== '0';
 let EDITON = store('edmode') !== '0';     // edit mode switch, on by default     // a dragged edge near the playhead lands on it
 let ANNOTATIONON = store('selected-annotation') !== '0';
+let QWENON = store('qwen-suggestions') !== '0';
 let Z = 1, RO = null;                     // timeline zoom; the observer that redraws its ruler
 let EDITKEY = null;                       // the open episode's edit-mode key handler (set by renderView)
 const grid = t => Math.round(t * 10) / 10;
@@ -786,6 +789,7 @@ function renderView(e, d, t0, sel0) {
     ${episodeMetadata(d)}
     <div class="cams"><label><input type="checkbox" id="cc" checked> captions on video</label>
       <label><input type="checkbox" id="annotationToggle" aria-controls="selbox" ${ANNOTATIONON ? 'checked' : ''}> selected annotation</label>
+      <button id="qwenToggle">${QWENON ? 'Hide' : 'Show'} Qwen suggestions</button>
       <button id="fs">⛶ fullscreen</button>
       <label class="videoSize">video size <input type="range" id="videoSize" min="25" max="100" step="5" value="${VIDEO_SIZE}"
         aria-label="Displayed video size" aria-valuetext="${VIDEO_SIZE}%"><output id="videoSizeValue" for="videoSize">${VIDEO_SIZE}%</output></label><span class="sp"></span>
@@ -1473,6 +1477,12 @@ function renderView(e, d, t0, sel0) {
   $('#annotationToggle').addEventListener('change', ev => {
     ANNOTATIONON = ev.target.checked; store('selected-annotation', ANNOTATIONON ? '1' : '0');
     $('#selbox').hidden = !ANNOTATIONON;
+  });
+  $('#view').classList.toggle('qwen-hidden', !QWENON);
+  $('#qwenToggle').addEventListener('click', ev => {
+    QWENON = !QWENON; store('qwen-suggestions', QWENON ? '1' : '0');
+    $('#view').classList.toggle('qwen-hidden', !QWENON);
+    ev.currentTarget.textContent = `${QWENON ? 'Hide' : 'Show'} Qwen suggestions`;
   });
   $('#fs').addEventListener('click', () => { document.fullscreenElement ? document.exitFullscreen() : $('#stage').requestFullscreen(); });
   $('#rate').addEventListener('change', ev => { RATE = +ev.target.value; store('rate', RATE); v.playbackRate = RATE; });
