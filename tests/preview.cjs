@@ -122,7 +122,25 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.locator('#fs').click();
   await page.waitForFunction(() => document.fullscreenElement?.id === 'stage');
   assert.ok(await page.locator('#stage').evaluate(element => element.getBoundingClientRect().width >= innerWidth - 1));
+  const setCaptionOpacity = async value => {
+    await page.locator('#captionOpacity').evaluate((input, value) => { input.value = value; input.dispatchEvent(new Event('input')); }, String(value));
+    assert.equal(await page.locator('#captionOpacityValue').textContent(), `${value}%`);
+    assert.equal(await page.locator('#captionOpacity').getAttribute('aria-valuetext'), `${value}%`);
+    for (const selector of ['#ovlSub', '#ovlAtom']) {
+      const style = await page.locator(selector).evaluate(element => ({ background: getComputedStyle(element).backgroundColor, opacity: getComputedStyle(element).opacity, color: getComputedStyle(element).color }));
+      const alpha = value === 100 ? 'rgb(0, 0, 0)' : `rgba(0, 0, 0, ${value / 100})`;
+      assert.equal(style.background, alpha); assert.equal(style.opacity, '1'); assert.equal(style.color, 'rgb(255, 255, 255)');
+    }
+  };
+  await setCaptionOpacity(0);
+  await setCaptionOpacity(100);
+  await setCaptionOpacity(35);
   await page.evaluate(() => document.exitFullscreen());
+  await page.reload(); await page.locator('#edSave').waitFor();
+  assert.equal(await page.locator('#captionOpacity').inputValue(), '35');
+  assert.equal(await page.locator('#ovlAtom').evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0.35)');
+  await setCaptionOpacity(72);
+  await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
   const captionsInside = () => page.waitForFunction(() => {
     const frame = document.querySelector('#stage').getBoundingClientRect(), box = document.querySelector('#ovl').getBoundingClientRect();
     return box.left >= frame.left - 1 && box.top >= frame.top - 1 && box.right <= frame.right + 1 && box.bottom <= frame.bottom + 1;

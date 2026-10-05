@@ -83,11 +83,11 @@
   #videos { margin:0 auto; }
   #stage { position:relative; background:#000; border-radius:4px; }
   #stage video { width:100%; max-height:calc(58vh * var(--video-scale, 1)); background:#000; border-radius:4px; display:block; }
-  video::cue { font-size:18px; background:rgba(0,0,0,.65); }
+  video::cue { font-size:18px; background:rgba(0,0,0,var(--caption-bg-opacity,.65)); }
   /* Own caption layer; the native <track> shows only when the video element alone is fullscreen. */
   #ovl { position:absolute; left:50%; bottom:48px; transform:translateX(-50%); width:max-content; max-width:100%; max-height:100%; overflow:auto; pointer-events:none; padding:0 12px;
          display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; }
-  #ovl > div { display:inline-block; max-width:94%; background:rgba(0,0,0,.72); color:#fff;
+  #ovl > div { display:inline-block; max-width:94%; background:rgba(0,0,0,var(--caption-bg-opacity,.72)); color:#fff;
                padding:3px 10px; border-radius:4px; margin:2px 0; text-shadow:0 1px 2px #000;
                pointer-events:auto; cursor:grab; touch-action:none; user-select:none; overflow-wrap:anywhere; }
   #ovl.dragging > div { cursor:grabbing; }
@@ -565,6 +565,8 @@ function captionPairs(before, after) {
 let EPS = [], FILTERED = [], GROUPS = [], CUR = null, HITS = null;
 let RATE = +store('rate') || 1;
 let VIDEO_SIZE = +store('video-size') || 100;
+let CAPTION_BG = Number(store('caption-bg-opacity') ?? 72);
+CAPTION_BG = Number.isFinite(CAPTION_BG) ? Math.max(0, Math.min(100, CAPTION_BG)) : 72;
 let CAPTION_POS = null;
 try {
   const pos = JSON.parse(store('caption-position'));
@@ -797,10 +799,12 @@ function renderView(e, d, t0, sel0) {
       <button id="qwenToggle">${QWENON ? 'Hide' : 'Show'} Qwen suggestions</button>
       <button id="fs">⛶ fullscreen</button>
       <label class="videoSize">video size <input type="range" id="videoSize" min="25" max="100" step="5" value="${VIDEO_SIZE}"
-        aria-label="Displayed video size" aria-valuetext="${VIDEO_SIZE}%"><output id="videoSizeValue" for="videoSize">${VIDEO_SIZE}%</output></label><span class="sp"></span>
+        aria-label="Displayed video size" aria-valuetext="${VIDEO_SIZE}%"><output id="videoSizeValue" for="videoSize">${VIDEO_SIZE}%</output></label>
+      <label class="videoSize">caption background <input type="range" id="captionOpacity" min="0" max="100" step="1" value="${CAPTION_BG}"
+        aria-label="Caption background opacity" aria-valuetext="${CAPTION_BG}%"><output id="captionOpacityValue" for="captionOpacity">${CAPTION_BG}%</output></label><span class="sp"></span>
       <label>speed <select id="rate">${[0.5, 1, 1.5, 2, 4].map(x => `<option ${x === RATE ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
     <div class="review-media">
-    <div id="videos" style="width:${VIDEO_SIZE}%; --video-scale:${VIDEO_SIZE / 100}"><div id="stage"><video controls preload="metadata" src="${mediaBase}/video?${q}">
+    <div id="videos" style="width:${VIDEO_SIZE}%; --video-scale:${VIDEO_SIZE / 100}"><div id="stage" style="--caption-bg-opacity:${CAPTION_BG / 100}"><video controls preload="metadata" src="${mediaBase}/video?${q}">
         <track kind="subtitles" label="sub-task + atomic" srclang="en" default></video>
       <div id="ovl" tabindex="0" role="group" aria-label="Video captions: drag or use arrow keys to move; Home resets"
         aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home" title="Drag captions to move · double-click to reset"><div class="s hide" id="ovlSub"></div><div class="a hide" id="ovlAtom"></div></div></div></div>
@@ -1582,6 +1586,12 @@ function renderView(e, d, t0, sel0) {
     $('#videos').style.setProperty('--video-scale', VIDEO_SIZE / 100);
     $('#videoSizeValue').value = `${VIDEO_SIZE}%`;
     ev.target.setAttribute('aria-valuetext', `${VIDEO_SIZE}%`);
+  });
+  $('#captionOpacity').addEventListener('input', ev => {
+    CAPTION_BG = +ev.target.value; store('caption-bg-opacity', CAPTION_BG);
+    stage.style.setProperty('--caption-bg-opacity', CAPTION_BG / 100);
+    $('#captionOpacityValue').value = `${CAPTION_BG}%`;
+    ev.target.setAttribute('aria-valuetext', `${CAPTION_BG}%`);
   });
   $('#prev').addEventListener('click', () => step(-1));
   $('#next').addEventListener('click', () => step(1));
