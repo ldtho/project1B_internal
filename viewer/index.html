@@ -1,0 +1,1536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>captioning_data</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* Same look as data_prep/viz/corrector/inspect_ui, plus a third colour for the instruction level. */
+  :root { --bg:#f6f7f9; --panel:#fff; --line:#dde1e6; --fg:#1b1f24; --muted:#6b7280; --acc:#1457a8; --acc-bg:#e6effa;
+          --ins:#6d28d9; --ins-bg:#e9e3fb; --sub:#1457a8; --sub-bg:#cddcf2; --atom:#0f766e; --atom-bg:#c7e8e2;
+          --warn:#b45309; --warn-bg:#fef3c7; --bad:#b91c1c; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { font:14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color:var(--fg); background:var(--bg); display:flex; flex-direction:column; }
+  header { display:flex; gap:10px; align-items:center; padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:15px; margin:0 8px 0 0; }
+  header input[type=search] { flex:1; min-width:220px; padding:5px 8px; border:1px solid var(--line); border-radius:4px; }
+  header select, header label { font-size:13px; }
+  #splitSel, #taskSel { width:70px; max-width:100%; text-overflow:ellipsis; }
+  header .count { color:var(--muted); font-size:12px; margin-left:auto; }
+  button { padding:3px 9px; border:1px solid var(--line); background:var(--panel); border-radius:4px; cursor:pointer; font:inherit; font-size:13px;
+           transition:background .12s, border-color .12s, color .12s; }
+  button:hover:not(:disabled) { background:#eef3f9; border-color:#a9b8ca; }
+  button:disabled { opacity:.4; cursor:default; }
+  main { flex:1; display:flex; min-height:0; }
+  #side { width:var(--side-w, 360px); flex:none; display:flex; flex-direction:column; border-right:1px solid var(--line); background:var(--panel); }
+  /* episode list: drag its edge to resize, ☰ hides it */
+  #sideHandle { width:5px; flex:none; cursor:col-resize; background:var(--line); }
+  #sideHandle:hover, body.sizing #sideHandle { background:var(--acc); }
+  body.sizing { cursor:col-resize; user-select:none; }
+  body.noside #side, body.noside #sideHandle { display:none; }
+  #side.closing { opacity:.45; }
+  #sideBtn.on { background:var(--acc-bg); border-color:var(--acc); color:var(--acc); }
+  #side .bar { display:flex; gap:6px; padding:6px 10px; border-bottom:1px solid var(--line); font-size:12px; color:var(--muted); align-items:center; }
+  #side .bar button { padding:1px 7px; font-size:12px; }
+  #list { flex:1; overflow:auto; }
+  .grp { border-bottom:1px solid var(--line); }
+  .grp > .hd { display:flex; gap:6px; align-items:baseline; padding:6px 10px; cursor:pointer; font-weight:600; position:sticky; top:0; background:var(--panel); z-index:1; }
+  .grp > .hd:hover { background:#f0f3f7; }
+  .grp > .hd .n { color:var(--muted); font-weight:400; font-size:12px; }
+  .grp > .hd::before { content:"▸"; color:var(--muted); font-size:11px; }
+  .grp.open > .hd::before { content:"▾"; }
+  .grp.has-cur > .hd { color:var(--acc); }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:4px 10px 4px 24px; cursor:pointer; font-size:12px; border-top:1px solid #f0f2f5; }
+  .row .tags { display:flex; flex-wrap:wrap; gap:4px; width:100%; }
+  .row:hover { background:#f0f3f7; }
+  .row.active { background:var(--acc-bg); box-shadow:inset 3px 0 var(--acc); }
+  .row .m { color:var(--muted); }
+  .row code { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row .sp { flex:1; }
+  .badge { display:inline-block; font-size:11px; padding:0 5px; border-radius:8px; background:var(--warn-bg); color:var(--warn); white-space:nowrap; }
+  .badge.split { background:#e5e7eb; color:#374151; }
+  .badge.ds { background:var(--ins-bg); color:var(--ins); }
+  .badge.test { background:#dbeafe; color:#1e40af; }
+  .badge.val { background:#fef3c7; color:#92400e; }
+  .badge.flag { background:var(--warn); color:#fff; font-weight:600; }
+  #stats, #qaStats { background:var(--panel); border-bottom:1px solid var(--line); padding:4px 12px 8px; margin:0; }
+  #stats summary, #qaStats summary { font-size:13px; font-weight:600; color:var(--fg); padding:2px 0; }
+  #stats table, #qaStats table { width:auto; min-width:60%; margin-top:4px; font-size:12px; font-variant-numeric:tabular-nums; }
+  #statsBody, #qaStatsBody { overflow-x:auto; }
+  #stats th, #stats td, #qaStats th, #qaStats td { padding:3px 10px; white-space:nowrap; }
+  #stats td.num, #qaStats td.num { text-align:right; }
+  #stats tr.tot td { font-weight:600; }
+  #stats tr.all td, #qaStats tr.all td { font-weight:600; border-top:2px solid var(--line); }
+  #stats tr.pick { cursor:pointer; } #stats tr.pick:hover td { background:#f0f3f7; }
+  #stats .note, #qaStats .note { color:var(--muted); font-size:11px; margin-top:4px; }
+  #view { flex:1; overflow:auto; padding:12px 16px; }
+  #view .empty { color:var(--muted); margin-top:40px; text-align:center; }
+  .nav { display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
+  .nav .pos { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+  .nav .sp { flex:1; }
+  .title { display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+  .title h2 { margin:0; font-size:18px; cursor:pointer; }
+  .title h2:hover { text-decoration:underline; }
+  .title code { font-size:12px; color:var(--muted); }
+  .kv { color:var(--muted); font-size:12px; margin:4px 0 10px; }
+  .kv b { color:var(--fg); font-weight:600; }
+  .cams { display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
+  .cams .sp { flex:1; }
+  .cams .videoSize { display:flex; align-items:center; gap:6px; }
+  .videoSize input { width:120px; }
+  .videoSize output { min-width:36px; font-variant-numeric:tabular-nums; }
+  #videos { margin:0 auto; }
+  #stage { position:relative; background:#000; border-radius:4px; }
+  #stage video { width:100%; max-height:calc(58vh * var(--video-scale, 1)); background:#000; border-radius:4px; display:block; }
+  video::cue { font-size:18px; background:rgba(0,0,0,.65); }
+  /* Own caption layer; the native <track> shows only when the video element alone is fullscreen. */
+  #ovl { position:absolute; left:0; right:0; bottom:48px; pointer-events:none; padding:0 12px;
+         display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; }
+  #ovl > div { display:inline-block; max-width:94%; background:rgba(0,0,0,.72); color:#fff;
+               padding:3px 10px; border-radius:4px; margin:2px 0; text-shadow:0 1px 2px #000; }
+  #ovl .s { font-weight:600; font-size:17px; }
+  #ovl .a { font-size:16px; }
+  #ovl .hide { display:none; }
+  #stage:fullscreen { display:flex; align-items:center; justify-content:center; }
+  #stage:fullscreen video { max-height:100vh; height:100vh; width:100%; object-fit:contain; border-radius:0; }
+  #stage:fullscreen #ovl { bottom:8vh; }
+  #stage:fullscreen #ovl .s { font-size:3vh; }
+  #stage:fullscreen #ovl .a { font-size:2.6vh; }
+  .hand { display:inline-block; font-size:11px; padding:0 5px; border-radius:8px; background:#ede9fe; color:#5b21b6; margin-right:5px; }
+  .hand.l { background:#e0e7ff; color:#3730a3; } .hand.r { background:#fce7f3; color:#9d174d; } .hand.e { background:#e5e7eb; color:#374151; }
+  .hand.dup { background:#fee2e2; color:var(--bad); box-shadow:0 0 0 1.5px var(--bad); }
+  /* the selected caption: one card, its parent as a header strip, the caption under it, Qwen's notes as the footer */
+  .selbox { margin:10px 0 0; }
+  .selbox .hint { padding:8px 12px; border:1px dashed #cbd2da; border-radius:6px; color:var(--muted); font-size:12px; text-align:center; background:var(--panel); }
+  .selcard { background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden; box-shadow:0 1px 2px rgba(15,23,42,.05); }
+  .selrow { padding:6px 12px; border-left:4px solid transparent; }
+  .selrow.par { display:flex; gap:10px; align-items:center; background:#f7f8fa; border-bottom:1px solid var(--line); font-size:13px; color:#4b5563; }
+  .selrow.par.ins { border-left-color:var(--ins); } .selrow.par.sub { border-left-color:var(--sub); }
+  .selrow.me { padding-top:7px; padding-bottom:9px; }
+  .selrow.me.sub { border-left-color:var(--sub); } .selrow.me.atom { border-left-color:var(--atom); }
+  .selrow .ptx { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .selrow .flg { flex:none; color:var(--bad); font-size:12px; font-weight:600; }
+  .chip { flex:none; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:3px; white-space:nowrap; }
+  .par .chip.ins { background:var(--ins-bg); color:var(--ins); } .par .chip.sub { background:var(--sub-bg); color:var(--sub); }
+  .me .chip.sub { background:var(--sub); color:#fff; } .me .chip.atom { background:var(--atom); color:#fff; }
+  .selrow .t { flex:none; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .selhd { display:flex; gap:10px; align-items:center; margin-bottom:6px; }
+  .selhd .sp { flex:1; }
+  .selhd .act { font-size:12px; padding:2px 10px; }
+  .selhd .act:hover:not(:disabled) { background:var(--acc-bg); border-color:var(--acc); color:var(--acc); }
+  .selhd .act.del:hover:not(:disabled) { background:#fef2f2; border-color:var(--bad); color:var(--bad); }
+  .selin { width:100%; font:inherit; font-size:15px; padding:6px 9px; border:1px solid #cbd2da; border-radius:5px; background:#fff; color:var(--fg); }
+  .selin:focus { outline:none; border-color:var(--acc); box-shadow:0 0 0 3px var(--acc-bg); }
+  .selin.dup { border-color:var(--bad); background:#fff7f7; }
+  .seltx { font-size:15px; padding:2px 0; }
+  .selrow .warn { margin-top:6px; font-size:12px; color:var(--bad); background:#fef2f2; border-radius:4px; padding:4px 8px; }
+  .selrow .warn:empty { display:none; }
+  .selrow .warn .prev { margin-top:3px; color:var(--fg); font-size:13px; }
+  #selChk { border-top:1px solid #f3d2d2; background:#fffafa; padding:6px 12px 8px 16px; }
+  #selChk:empty { display:none; }
+  #selChk div.chk { border:0; margin:0; padding:0; }
+  #selChk div.chk + div.chk { margin-top:6px; padding-top:6px; border-top:1px dashed #f3d2d2; }
+  #selChk > button { margin-top:6px; font-size:12px; }
+  #selChk > button:hover { background:#dcfce7; border-color:#16a34a; color:#166534; }
+  /* in-place text correction on the timeline (double-click a caption in edit mode) */
+  .tl .seg.editing { overflow:visible; z-index:5; }
+  .tl .seg input.tled { position:absolute; top:0; bottom:0; left:0; width:max(100%, 320px); z-index:6; font:13px system-ui, sans-serif;
+                        padding:0 5px; border:2px solid var(--acc); border-radius:3px; background:#fff; color:var(--fg); box-shadow:0 2px 8px rgba(0,0,0,.25); }
+  /* Three-lane timeline: instruction over sub-tasks over atomic lines, under a ruler; zoom widens .tlc and .tlwrap scrolls */
+  .tlbar { display:flex; gap:12px; align-items:center; margin:10px 0 0; font-size:12px; color:var(--muted); flex-wrap:wrap; }
+  .tlbar .sp { flex:1; }
+  .tlbar .edonly { display:inline-flex; gap:12px; align-items:center; }
+  .tlbar .edonly button + button { margin-left:-6px; }
+  .tlbar:not(.on) .edonly { display:none; }
+  .switch { display:inline-flex; align-items:center; gap:7px; cursor:pointer; font-weight:600; color:var(--fg); font-size:13px; }
+  .switch input { position:absolute; opacity:0; width:0; height:0; }
+  .switch i { width:34px; height:18px; border-radius:9px; background:#cbd2da; position:relative; transition:background .15s; }
+  .switch i::after { content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff;
+                     box-shadow:0 1px 2px rgba(0,0,0,.3); transition:left .15s; }
+  .switch input:checked + i { background:var(--acc); }
+  .switch input:checked + i::after { left:18px; }
+  .switch input:focus-visible + i { outline:2px solid var(--acc); outline-offset:2px; }
+  .tlrow { margin-top:12px; }
+  .tlwrap { position:relative; margin:0 0 2px; overflow-x:auto; overflow-y:hidden; }
+  .tlc { position:relative; min-width:100%; user-select:none; }
+  .ruler { position:relative; height:17px; cursor:pointer; background-repeat:repeat-x; background-position:0 100%;
+           background-image:linear-gradient(to right, #b8c0c9 1px, transparent 1px); }
+  .ruler span { position:absolute; bottom:0; height:100%; border-left:1px solid #6b7280; padding-left:3px; font:10px/1.2 ui-monospace, monospace; color:var(--muted); white-space:nowrap; }
+  .tl { position:relative; cursor:pointer; user-select:none; }
+  .tl.ed .lane.sub .seg, .tl.ed .lane.atom .seg { cursor:grab; }
+  .tl .seg .hl, .tl .seg .hr { position:absolute; top:0; bottom:0; width:6px; cursor:ew-resize; background:rgba(0,0,0,.14); }
+  .tl .seg .hl { left:0; } .tl .seg .hr { right:0; }
+  .tl .seg.sel { box-shadow:inset 0 0 0 2px var(--fg); }
+  body.tldrag, body.tldrag * { cursor:grabbing !important; }
+  /* one tinted lane per level, a small gap between them, and a level label left of each (heights shared with .tlgut) */
+  .tlrow { display:flex; gap:6px; }
+  .tlrow .tlwrap { flex:1; min-width:0; }
+  .tlgut { flex:none; display:flex; flex-direction:column; gap:5px; }
+  .tlgut span.zoom { height:17px; margin-bottom:-3px; display:flex; gap:2px; padding:0; color:inherit; text-transform:none; letter-spacing:0; }
+  .tlgut .zoom button { padding:0 6px; font-size:11px; line-height:15px; }
+  .tlgut span { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#fff; border-radius:3px; padding:0 6px; display:flex; align-items:center; }
+  .tlgut .ins, .tl .lane.ins { height:22px; } .tlgut .sub, .tl .lane.sub { height:28px; } .tlgut .atom, .tl .lane.atom { height:22px; }
+  .tlgut .ins { background:var(--ins); } .tlgut .sub { background:var(--sub); } .tlgut .atom { background:var(--atom); }
+  .tl { margin-top:2px; display:flex; flex-direction:column; gap:5px; }
+  .tl .lane { position:relative; border-radius:4px; }
+  .tl .lane.ins { background:#f1ecfd; box-shadow:inset 0 0 0 1px #d6c8f7; }
+  .tl .lane.sub { background:#edf2f9; box-shadow:inset 0 0 0 1px #c3d4ee; }
+  .tl .lane.atom { background:#eaf5f2; box-shadow:inset 0 0 0 1px #b9ddd5; }
+  .tl .lane.none { background:repeating-linear-gradient(45deg, #eef1f4 0 6px, #e3e7ec 6px 12px); color:var(--muted); font-size:11px; padding:5px 6px; }
+  .tl .seg { position:absolute; top:0; bottom:0; border-right:1px solid #fff; overflow:hidden; font-size:11px; padding:5px 4px; white-space:nowrap; }
+  .tl .lane.ins .seg { background:var(--ins-bg); color:#3b0764; padding:3px 6px; }
+  .tl .lane.sub .seg { background:var(--sub-bg); color:#0b2a55; }
+  .tl .lane.sub .seg:nth-child(odd) { background:#dbe6f6; }
+  .tl .lane.sub .seg.active { background:var(--sub); color:#fff; }
+  .tl .lane.atom .seg { background:var(--atom-bg); color:#134e4a; padding:2px 3px; font-size:10px; }
+  .tl .lane.atom .seg:nth-child(odd) { background:#d9f0ec; }
+  .tl .lane.atom .seg.active { background:var(--atom); color:#fff; }
+  .tl .lane.atom .seg.fb { background:#fff1d6; color:var(--warn); outline:1px dashed var(--warn); outline-offset:-1px; }
+  .tl .lane.atom .seg.fb.active { background:var(--warn); color:#fff; }
+  .head { position:absolute; top:0; bottom:0; width:2px; background:#111; pointer-events:none; z-index:2; }
+  .legend { font-size:11px; color:var(--muted); display:flex; gap:14px; margin:4px 0 10px; flex-wrap:wrap; }
+  .legend i { display:inline-block; width:8px; height:8px; margin-right:3px; }
+  /* Level table: instruction, then each sub-task, then its atomic lines */
+  table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); }
+  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; color:var(--muted); font-weight:600; }
+  tr.ins td { background:var(--ins-bg); font-weight:600; }
+  tr.ins td.lv, tr.sub td.lv, tr.atom td.lv { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:400; white-space:nowrap; }
+  /* levels at a glance: a coloured chip and bar per level, atomic lines indented under their sub-task, a gap before each sub-task */
+  td.lv .lvl { display:inline-block; color:#fff; border-radius:3px; padding:1px 6px; }
+  tr.ins .lvl { background:var(--ins); } tr.sub .lvl { background:var(--sub); } tr.atom .lvl { background:var(--atom); }
+  tr.ins > td.lv { box-shadow:inset 4px 0 var(--ins); } tr.sub > td.lv { box-shadow:inset 4px 0 var(--sub); } tr.atom > td.lv { box-shadow:inset 4px 0 var(--atom); }
+  tr.sub > td { border-top:8px solid var(--bg); }
+  tr.atom.nest > td.lv { padding-left:24px; }
+  tr.sub { cursor:pointer; background:#f4f7fb; }
+  tr.sub:hover { background:#e9f0fa; }
+  tr.sub.active > td { background:#e3ecf8; }
+  tr.sub td { font-weight:600; }
+  tr.atom { cursor:pointer; }
+  tr.atom:hover { background:#f0f3f7; }
+  tr.atom.active { background:var(--atom-bg); }
+  tr.atom.fb td { color:var(--warn); }
+  tr.atom.fb.active { background:var(--warn-bg); }
+  tr.atom.nest td.d { padding-left:22px; }
+  tr.note td { color:var(--muted); font-size:12px; font-style:italic; }
+  td.t { white-space:nowrap; font-variant-numeric:tabular-nums; color:var(--muted); font-size:12px; }
+  kbd { font:11px monospace; border:1px solid var(--line); border-radius:3px; padding:0 4px; background:#fff; }
+  /* Edit mode */
+  /* QA: the light per episode (green = corrected, orange = saved unchanged), who is logged in, the login screen */
+  .light { display:inline-block; width:10px; height:10px; border-radius:50%; flex:none; }
+  .light.corrected { background:#16a34a; box-shadow:0 0 0 2px #bbf7d0; }
+  .light.confirmed { background:#f59e0b; box-shadow:0 0 0 2px #fde68a; }
+  .badge.qa.corrected { background:#dcfce7; color:#166534; } .badge.qa.confirmed { background:#ffedd5; color:#9a3412; }
+  .badge.who { background:#e0e7ff; color:#3730a3; }
+  #qaStats tr.qa { cursor:pointer; } #qaStats tr.qa:hover td { background:#f0f3f7; }
+  #me { font-size:12px; display:flex; gap:6px; align-items:center; }
+  #me b { color:var(--acc); }
+  #login { position:fixed; inset:0; background:rgba(15,23,42,.55); display:flex; align-items:flex-start; justify-content:center; padding:10vh 16px; z-index:200; }
+  #login[hidden] { display:none; }
+  #login .gbox { background:var(--panel); border-radius:8px; max-width:520px; width:100%; padding:18px 22px; box-shadow:0 12px 40px rgba(0,0,0,.3); }
+  #login h3 { margin:0 0 4px; font-size:17px; }
+  #login h4 { margin:14px 0 6px; font-size:11px; color:var(--acc); text-transform:uppercase; letter-spacing:.06em; }
+  #login .names { display:flex; flex-wrap:wrap; gap:8px; }
+  #login .names button { padding:8px 14px; font-size:14px; }
+  #login .names button.sel { background:var(--acc-bg); border-color:var(--acc); color:var(--acc); }
+  #login form { display:flex; gap:8px; margin-top:8px; }
+  #login form[hidden] { display:none; }
+  #login input { flex:1; padding:6px 8px; border:1px solid var(--line); border-radius:4px; font:inherit; }
+  #loginMsg { color:var(--bad); font-size:12px; margin-top:8px; min-height:1em; }
+  #login .skip { margin-top:14px; font-size:12px; color:var(--muted); }
+  button.pri { background:var(--acc); color:#fff; border-color:var(--acc); }
+  table.ed tr.sel > td { box-shadow:inset 0 2px var(--acc), inset 0 -2px var(--acc); }
+  table.ed tr.sel > td.lv { box-shadow:inset 4px 0 var(--acc), inset 0 2px var(--acc), inset 0 -2px var(--acc); }
+  #edmsg { font-size:12px; color:var(--muted); }
+  #edmsg.err { color:var(--bad); font-weight:600; }
+  table.ed input { font:inherit; font-size:13px; padding:2px 5px; border:1px solid var(--line); border-radius:3px; background:#fff; }
+  table.ed input.tm { width:72px; font-variant-numeric:tabular-nums; }
+  table.ed input.tx { width:100%; }
+  table.ed input.bad { border-color:var(--bad); background:#fef2f2; }
+  table.ed td.ops { white-space:nowrap; }
+  table.ed td.ops button { padding:1px 6px; font-size:12px; }
+  table.ed tr.sub, table.ed tr.atom { cursor:default; }
+  table.ed td.ops button { min-width:26px; }
+  /* instant hover labels on the row buttons (a title tooltip takes a second to show) */
+  [data-tip] { position:relative; }
+  [data-tip]:hover::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 6px); right:0; z-index:20; pointer-events:none;
+                            background:#1f2937; color:#fff; font-size:11px; line-height:1.3; padding:3px 7px; border-radius:4px;
+                            white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,.2); }
+  table.ed td.ops button:hover:not(:disabled) { background:var(--acc-bg); border-color:var(--acc); color:var(--acc); }
+  table.ed td.ops button[data-op="del"]:hover { background:#fef2f2; border-color:var(--bad); color:var(--bad); }
+  table.ed td.ops button[data-op="sugg"]:hover, table.ed button[data-op="sugg-ins"]:hover { background:#dcfce7; border-color:#16a34a; color:#166534; }
+  /* the guide (? or the Guide button) */
+  #guide { position:fixed; inset:0; background:rgba(15,23,42,.45); display:flex; align-items:flex-start; justify-content:center;
+           padding:6vh 16px; z-index:100; overflow:auto; }
+  #guide[hidden] { display:none; }
+  #guide .gbox { position:relative; background:var(--panel); border-radius:8px; max-width:1200px; width:100%; padding:16px 22px 18px;
+                 box-shadow:0 12px 40px rgba(0,0,0,.3); font-size:13px; line-height:1.55; }
+  #guide h3 { margin:0 0 4px; font-size:17px; }
+  #guide h4 { margin:14px 0 4px; font-size:11px; color:var(--acc); text-transform:uppercase; letter-spacing:.06em; }
+  #guide ul { margin:0; padding-left:18px; } #guide li { margin:3px 0; }
+  #guideX { position:absolute; top:10px; right:12px; font-size:18px; line-height:1; padding:2px 9px; }
+  #guide .kcols { display:grid; grid-template-columns:1fr 1fr; gap:0 28px; }
+  #guide .kg { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; align-content:start; }
+  #guide .kg b { grid-column:1 / -1; font-size:12px; margin-bottom:2px; }
+  #guide .kg code { font-size:11px; }
+  /* Task / sub-task check verdicts (only the ones judged wrong) */
+  .badge.chk { background:#fee2e2; color:var(--bad); }
+  div.chk { font-size:12px; color:var(--bad); margin-top:4px; font-weight:400; border-left:3px solid var(--bad); padding:2px 0 2px 8px; }
+  .chk .saw { color:var(--muted); }
+  /* Qwen's suggestion as a word diff against the text it judged */
+  .chk .df { display:grid; grid-template-columns:auto 1fr; gap:2px 8px; margin:3px 0; color:var(--fg); font-size:13px; }
+  .chk .df .k { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding-top:3px; }
+  .chk del { background:#fecaca; color:#991b1b; }
+  .chk ins { background:#bbf7d0; color:#166534; text-decoration:none; font-weight:600; }
+  tr.flag > td { background:#fdf0f0 !important; }
+  tr.flag > td.lv { box-shadow:inset 3px 0 var(--bad); }
+  .tl .lane .seg.flag { background:#f6cccc !important; color:#7f1d1d !important; }
+  .tl .lane .seg.flag.active { background:var(--bad) !important; color:#fff !important; }
+  @media (max-width: 800px) {
+    main { flex-direction:column; }
+    #side { width:100%; height:38vh; border-right:0; border-bottom:1px solid var(--line); }
+    #sideHandle { display:none; }
+    #guide .kcols { grid-template-columns:1fr; }
+  }
+  .badge.chosen { background:#dcfce7; color:#166534; }
+  .badge.discarded { background:#fee2e2; color:#991b1b; }
+  .badge.context { background:#e5e7eb; color:#374151; }
+  .tl .seg.discarded { opacity:.55; outline:1px dashed #b91c1c; }
+  .tl .seg.context { opacity:.45; }
+  .compare { margin:12px 0; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  .compare > summary { padding:12px; cursor:pointer; font-weight:650; }
+  .compare > summary span { margin-left:8px; color:var(--muted); font-weight:400; }
+  .cmp-controls { display:flex; flex-wrap:wrap; align-items:end; gap:12px; padding:0 12px 12px; }
+  .cmp-controls label { display:flex; flex-direction:column; gap:5px; min-width:0; max-width:100%; }
+  .cmp-controls label:last-child { flex-direction:row; align-items:center; padding-bottom:5px; }
+  .cmp-controls select { max-width:100%; }
+  .cmp-content { padding:0 12px 12px; }
+  .cmp-content table { width:100%; table-layout:fixed; margin:0 0 16px; border-collapse:collapse; }
+  .cmp-content caption { text-align:left; font-weight:650; padding:8px 0; }
+  .cmp-content th { background:#f5f7fb; text-align:left; padding:8px; border:1px solid var(--line); }
+  .cmp-content td { width:50%; padding:10px; vertical-align:top; border:1px solid var(--line); overflow-wrap:anywhere; }
+  .cmp-content p { margin:8px 0 0; white-space:pre-wrap; }
+  .compare del { background:#ffe3e5; color:#902c39; text-decoration:line-through; }
+  .compare ins { background:#dcf6e5; color:#146637; text-decoration:underline; }
+  .cmp-tag { display:inline-block; margin:0 5px 5px 0; padding:2px 6px; border:1px solid #bbc8dc; border-radius:4px; font-size:12px; }
+  .cmp-time { display:block; margin:4px 0; font-variant-numeric:tabular-nums; }
+  .cmp-meta, .cmp-empty { color:var(--muted); font-size:13px; }
+  .cmp-meta { margin:0 12px 12px; overflow-wrap:anywhere; }
+  @media (max-width:700px) {
+    .cmp-controls label { width:100%; }
+    .cmp-content thead { display:none; }
+    .cmp-content tr, .cmp-content td { display:block; width:auto; }
+    .cmp-content td::before { content:attr(data-label); display:block; font-weight:650; margin-bottom:6px; }
+    .cmp-content tr { margin-bottom:12px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <button id="sideBtn" title="show / hide the episode list (drag its right edge to resize)">☰ episodes</button>
+  <h1>captioning_data</h1>
+  <select id="ds" title="dataset"><option value="">all datasets</option></select>
+  <select id="splitSel" title="split"><option value="">all splits</option></select>
+  <select id="taskSel" title="task"><option value="">all tasks</option></select>
+  <select id="sceneSel" title="scene" aria-label="Scene" hidden><option value="">all scenes</option></select>
+  <select id="levelSel" title="available annotation levels" aria-label="Annotation levels" hidden><option value="">all annotation levels</option></select>
+  <select id="flagSel" title="annotation checks, partial splits, review notes and source issues" aria-label="Flags" hidden><option value="">all flags</option></select>
+  <input type="search" id="q" placeholder="search task / instruction / sub-task / atomic action / uid …  ( / )">
+  <select id="sort">
+    <option value="task">sort: task</option>
+    <option value="dur">duration ↓</option>
+    <option value="nsub">sub-tasks ↓</option>
+    <option value="natom">atomic lines ↓</option>
+  </select>
+  <select id="whoSel" title="QA assignee"><option value="">all episodes</option></select>
+  <select id="qaSel" title="QA status">
+    <option value="">any QA status</option>
+    <option value="todo">not reviewed yet</option>
+    <option value="corrected">● corrected</option>
+    <option value="confirmed">● saved unchanged</option>
+  </select>
+  <span class="count" id="count"></span>
+  <span id="me"></span>
+</header>
+<div id="login" hidden><div class="gbox">
+  <h3>Who is reviewing?</h3>
+  <div class="kv">Click your name. Your saves are logged under it.</div>
+  <h4>Reviewers</h4><div class="names" id="loginRev"></div>
+  <h4>Admins</h4><div class="names" id="loginAdm"></div>
+  <form id="loginPw" hidden><input type="password" id="pw" placeholder="admin password" autocomplete="current-password"><button class="pri">log in</button></form>
+  <div id="loginMsg"></div>
+  <div class="skip"><a href="#" id="loginSkip">just browse (read-only)</a></div>
+</div></div>
+<details id="stats"><summary>Statistics</summary><div id="statsBody"></div></details>
+<details id="qaStats" hidden><summary>QA progress</summary><div id="qaStatsBody"></div></details>
+<main>
+  <div id="side">
+    <div class="bar"><span id="gcount"></span><span style="flex:1"></span><button id="expand">expand all</button><button id="collapse">collapse all</button></div>
+    <div id="list"></div>
+  </div>
+  <div id="sideHandle" title="drag to resize the episode list"></div>
+  <div id="view"><div class="empty">loading …</div></div>
+</main>
+<div id="guide" hidden><div class="gbox"><button id="guideX" title="close (Esc)">×</button>
+  <h3>Guide</h3>
+  <h4>Viewing</h4>
+  <ul>
+    <li>Pick an episode in the list. ☰ shows / hides it; drag its right edge to resize it, and below the minimum it hides.</li>
+    <li>Use the <b>video size</b> slider above the player to shrink or enlarge its display between 25% and 100%.
+      The size is remembered across episodes and reloads; fullscreen uses the full screen.</li>
+    <li>The timeline has one lane per level: 1 instruction, 2 sub-task (where available), 3 atomic. Click a caption to select it and jump to its
+      start; click or drag the ruler to scrub; − / fit / + (left of the ruler) zoom, down to 0.1 s ticks.</li>
+    <li>The selected caption shows above the timeline under its parent, with Qwen's check note (original → suggested) when it or its
+      parent was flagged. The table below lists every caption, atomic lines under their sub-task.</li>
+  </ul>
+  <h4>Filters and flags</h4>
+  <ul>
+    <li>Combine dataset, split, task, scene, annotation-level and flag filters to narrow the episode list.
+      <b>L2 only</b>, <b>L3.5 only</b> and <b>L2 + L3.5 (both)</b> refer to captions actually available in the episode.</li>
+    <li>Scene and Flags controls appear only when the selected dataset provides that metadata. Options update when you switch datasets;
+      unavailable selections clear automatically. Annotation-level tags and L2 source badges appear on episode cards.</li>
+    <li>EgoExoLearn shows recordings with at least <b>80% fine-caption coverage</b> after selection filters.
+      Each video belongs to one train, validation or test split. <b>Source split labels</b> in metadata preserve native action-level labels.</li>
+    <li><b>all flags</b> applies no flag restriction; <b>any flag</b> selects episodes with at least one flag;
+      <b>no flags</b> selects episodes without recorded flags. Flags are separate from QA review status.</li>
+    <li><b>annotation check</b>: Qwen judged the instruction or a sub-task wrong. The check note shows original and suggested text.</li>
+    <li><b>partial split</b>: a sub-task had no accepted atomic split, so its own text stands in as an atomic line.
+      This and <b>annotation check</b> use the Flags dropdown; there are no separate toggles.</li>
+    <li><b>review notes</b>: Pantheon correction notes are available. They may describe wording changes rather than confirmed errors;
+      expand <b>Review notes</b> on the episode to read them.</li>
+    <li><b>overlap conflict</b>: incompatible hand events overlap in the original annotations.
+      <b>unannotated span</b>: an interval had no usable action annotation.</li>
+    <li><b>nonpositive event</b>: a source event ends at or before its start.
+      <b>sub tick event</b>: a source event disappears after clipping and rounding to the 0.1 s import grid.</li>
+    <li><b>missing subtask labels</b>: the source contains a missing-task-text placeholder. It remains in the original source table,
+      but is excluded from L2 playback captions.</li>
+  </ul>
+  <h4>Editing (the Edit mode switch, on by default)</h4>
+  <ul>
+    <li><b>Text</b>: type in the box above the timeline, double-click the caption on the timeline (<kbd>Enter</kbd> keeps, <kbd>Esc</kbd>
+      drops), or use the table. ✓ copies Qwen's suggested text into a flagged line.</li>
+    <li><b>Times</b>: drag a caption to move it, its edges to resize, on the 0.1 s grid. A caption stops at its neighbours; <i>move shared
+      boundaries</i> makes a touching neighbour follow instead, and <i>magnet</i> pulls an edge onto the playhead. In the table: m:ss.s or
+      seconds, ⇤ / ⇥ = playhead, <kbd>↑</kbd> / <kbd>↓</kbd> ±0.1 s.</li>
+    <li><b>+ Add caption</b> fills the gap after the selected caption. It is disabled while the next caption touches it: shorten one first.
+      <b>× Delete</b> leaves a gap and selects the caption before, so Add refills it. ✂ (table) splits at the playhead.</li>
+    <li><b>⇆ Merge</b> joins the selected caption with the next one, texts included. Duplicated hand tags are outlined red until each hand
+      has one clause.</li>
+    <li>Sub-tasks may leave gaps; Pantheon task segments may also overlap. Other sub-task tracks must not overlap.
+      Atomic lines must cover the video from 0:00.0 to its end without gaps, labelled
+      <b>[left hand]</b> / <b>[right hand]</b> / <b>[both hands]</b> and joined with <b>|</b>; a save is refused until they do.</li>
+    <li><b>save</b> logs the edit with your login name (the manifest is never touched), <b>discard</b> drops the unsaved changes,
+      <b>↺ reset</b> (next to the switch, asks first) drops every edit on the episode, saved and unsaved, back to the original captions.
+      Episodes not assigned to you open view-only, without the switch. Check both the sub-tasks (L2) and the atomic lines (L3.5), then save: with a
+      change the episode turns green, unchanged (<b>save · no change</b>) orange.</li>
+  </ul>
+  <h4>Tags</h4>
+  <div class="kcols">
+    <div class="kg"><b>Episode badges (list and title)</b>
+      <span><span class="badge split train">train</span> <span class="badge split val">val</span> <span class="badge split test">test</span></span>
+        <span>split in <code>data/splits</code>: val (1%) is the in-training eval, test (100 EgoVerse + 100 EgoDex) the held-out benchmark</span>
+      <span><span class="badge ds">EgoVerse</span></span><span>dataset; EgoDex episodes have no sub-task level</span>
+      <span><span class="badge split">loop bucket</span></span><span>EgoVerse edge case kept for training: the same action cycle repeats</span>
+      <span><span class="badge split">short bucket</span></span><span>EgoVerse edge case kept for training: non-procedural, only 1-3 sub-tasks</span>
+      <span><span class="badge flag">partial split</span></span><span>a sub-task could not be split into atomic lines; its own line stands in
+        (<span class="badge">unsplit</span> in the table, dashed amber on the timeline)</span>
+      <span><span class="badge flag">⚑ check · 2</span></span><span>Qwen's check judged that many lines wrong (the instruction and / or sub-tasks); red on the timeline and table</span>
+      <span><span class="light corrected"></span></span><span>QA corrected: saved with a change to the manifest; hover for who and when</span>
+      <span><span class="light confirmed"></span></span><span>QA saved unchanged: a reviewer checked it and kept the manifest's captions</span>
+      <span><span class="badge who">assigned to An</span></span><span>who reviews this episode (EgoVerse); only they or an admin can save it</span>
+      <span><code>0:28.5 · 4 sub-tasks · 14 atomic</code></span><span>list row: duration and caption counts</span></div>
+    <div class="kg"><b>Hand tags (atomic lines)</b>
+      <span><span class="hand l">left</span> <span class="hand r">right</span></span>
+        <span><b>[left hand]</b> / <b>[right hand]</b>: what that hand does. The camera wearer's own hands (left shows on the left of the
+        frame), left first, each at most once per line, clauses joined with <b>|</b></span>
+      <span><span class="hand b">both</span></span><span><b>[both hands]</b>: both hands do the same thing to the same object; never combined
+        with another tag. <b>[both hands] idle</b> = neither hand manipulates anything</span>
+      <span>no tag</span><span>an inactive hand (resting, hovering, out of frame) gets no clause; a hand that holds or stabilizes gets its own
+        ("[right hand] hold the cup")</span>
+      <span><span class="hand e">ego</span></span><span>old head / camera-motion tag; not part of the training format, dropped on save</span>
+      <span><span class="hand l dup">left</span></span><span>the same tag twice on one line (after a merge): rewrite it as one clause per hand</span>
+      <b style="margin-top:8px">Qwen check errors</b>
+      <span>action</span><span>a different action is performed</span>
+      <span>direction</span><span>the reverse action (put in / take out, open / close, fold / unfold)</span>
+      <span>object</span><span>a different object is handled</span>
+      <span>location</span><span>a different source or target place</span>
+      <span>count</span><span>a different number or colour of objects</span>
+      <span>segment</span><span>the action happens before or after this clip, or not at all</span>
+      <span>other</span><span>any other contradiction</span>
+      <span>fix applied</span><span>the line already carries Qwen's suggestion</span></div>
+  </div>
+  <h4>Keys</h4>
+  <div class="kcols">
+    <div class="kg"><b>Anywhere</b>
+      <span><kbd>⇧[</kbd> <kbd>⇧]</kbd></span><span>previous / next episode</span>
+      <span><kbd>r</kbd></span><span>random episode</span>
+      <span><kbd>/</kbd></span><span>search</span>
+      <span><kbd>space</kbd></span><span>play / pause</span>
+      <span><kbd>←</kbd> <kbd>→</kbd></span><span>0.1 s back / forward (<kbd>⇧</kbd> 0.5 s)</span>
+      <span><kbd>j</kbd> <kbd>k</kbd></span><span>next / previous atomic line</span>
+      <span><kbd>J</kbd> <kbd>K</kbd></span><span>next / previous sub-task</span>
+      <span><kbd>f</kbd></span><span>fullscreen</span>
+      <span><kbd>?</kbd></span><span>this guide</span></div>
+    <div class="kg"><b>Edit mode, on the selected caption</b>
+      <span><kbd>[</kbd> <kbd>]</kbd></span><span>previous / next caption</span>
+      <span><kbd>Enter</kbd></span><span>edit its text (<kbd>Enter</kbd> / <kbd>Esc</kbd> leaves)</span>
+      <span><kbd>a</kbd></span><span>add caption in the gap after it</span>
+      <span><kbd>⇧M</kbd></span><span>merge with the next</span>
+      <span><kbd>c</kbd></span><span>cut at the playhead</span>
+      <span><kbd>o</kbd></span><span>end → playhead, then the next caption</span>
+      <span><kbd>⌫</kbd></span><span>delete</span>
+      <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>⇧Z</kbd></span><span>undo / redo</span>
+      <span><kbd>Ctrl</kbd>+<kbd>S</kbd></span><span>save</span></div>
+  </div>
+</div></div>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = t => { t = Math.max(0, +t || 0); const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s.toFixed(1).padStart(4, '0')}`; };
+const AUTH = window.DATASET_AUTH;
+const request = AUTH ? AUTH.request : fetch;
+const mediaBase = AUTH ? '/captioning_data' : '';
+const store = (k, v) => { try { return v === undefined ? localStorage.getItem(k) : (localStorage.setItem(k, v), v); } catch (e) { return v === undefined ? null : v; } };
+// "[left hand] hold the cup | [right hand] lift the lid" -> coloured hand chips + text
+// mark = outline a tag that appears more than once (a merge leaves them; one clause per hand is the target)
+const TAG = /\[(left|right|both) hands?\]|\[ego\]/g;
+const tagCount = t => { const n = {}; for (const m of t.matchAll(TAG)) n[m[0]] = (n[m[0]] || 0) + 1; return n; };
+const hands = (t, mark) => { const n = mark ? tagCount(t) : {};
+  return esc(t).replace(TAG, (m, h) => `<span class="hand ${h ? h[0] : 'e'}${n[m] > 1 ? ' dup' : ''}">${h ? (h === 'both' ? 'both' : h) : 'ego'}</span>`)
+    .replace(/ \| /g, ' &nbsp; '); };
+const SPLIT_ORDER = ['train', 'val', 'test'];
+// Word diff (LCS) of a check's original vs suggested text -> [original, suggested] html, dropped words in <del>, new ones in <ins>.
+function wdiff(a, b) {
+  const x = a.split(/\s+/).filter(Boolean), y = b.split(/\s+/).filter(Boolean);
+  const L = Array.from({ length: x.length + 1 }, () => new Array(y.length + 1).fill(0));
+  for (let i = x.length - 1; i >= 0; i--)
+    for (let j = y.length - 1; j >= 0; j--) L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const o = [], n = [];
+  for (let i = 0, j = 0; i < x.length || j < y.length;) {
+    if (i < x.length && j < y.length && x[i] === y[j]) { o.push(esc(x[i++])); n.push(esc(y[j++])); }
+    else if (j < y.length && (i === x.length || L[i][j + 1] >= L[i + 1][j])) n.push(`<ins>${esc(y[j++])}</ins>`);
+    else o.push(`<del>${esc(x[i++])}</del>`);
+  }
+  return [o.join(' ').replace(/<\/del> <del>/g, ' '), n.join(' ').replace(/<\/ins> <ins>/g, ' ')];
+}
+
+// Align by text and time so inserted/deleted cues do not shift every later comparison.
+function captionPairs(before, after) {
+  const score = (a, b) => (a.text === b.text ? 3 : 0)
+    + (Math.abs(a.start - b.start) < 1e-6 && Math.abs(a.end - b.end) < 1e-6 ? 3
+      : Math.min(a.end, b.end) > Math.max(a.start, b.start) ? 1 : 0);
+  const matrix = Array.from({ length: before.length + 1 }, () => new Array(after.length + 1).fill(0));
+  for (let i = before.length - 1; i >= 0; i--)
+    for (let j = after.length - 1; j >= 0; j--)
+      matrix[i][j] = Math.max(matrix[i + 1][j], matrix[i][j + 1], matrix[i + 1][j + 1] + score(before[i], after[j]));
+  const rows = [];
+  for (let i = 0, j = 0; i < before.length || j < after.length;) {
+    if (i < before.length && j < after.length && score(before[i], after[j])
+        && matrix[i][j] === matrix[i + 1][j + 1] + score(before[i], after[j])) rows.push([before[i++], after[j++]]);
+    else if (j < after.length && (i === before.length || matrix[i][j + 1] >= matrix[i + 1][j])) rows.push([null, after[j++]]);
+    else rows.push([before[i++], null]);
+  }
+  return rows;
+}
+
+let EPS = [], FILTERED = [], GROUPS = [], CUR = null, HITS = null;
+let RATE = +store('rate') || 1;
+let VIDEO_SIZE = +store('video-size') || 100;
+let EDIT = null;                          // the working copy while the edit mode is on
+let LINK = store('link') === '1';         // opt-in: a moved start/end drags the line that shared it
+let MAGNET = store('magnet') !== '0';
+let EDITON = store('edmode') !== '0';     // edit mode switch, on by default     // a dragged edge near the playhead lands on it
+let Z = 1, RO = null;                     // timeline zoom; the observer that redraws its ruler
+let EDITKEY = null;                       // the open episode's edit-mode key handler (set by renderView)
+const grid = t => Math.round(t * 10) / 10;
+const clamp = (t, a, b) => Math.max(a, Math.min(b, t));
+// The QA login: {name, role, token} from /api/login, kept in this browser; null = browsing read-only.
+let ME = null, ROSTER = { reviewers: [], admins: [] };
+const canSave = e => ME && (AUTH || ME.role === 'admin' || e.assignee === ME.name);
+const qaLight = e => e.qa ? `<span class="light ${e.qa}" title="${e.qa === 'corrected' ? 'corrected' : 'saved unchanged'} by ${esc(e.edited?.editor)} · ${esc(e.edited?.time)}"></span>` : '';
+function showMe() {
+  $('#me').innerHTML = ME ? `👤 <b>${esc(ME.name)}</b>${ME.role === 'admin' ? ' (admin)' : ''}<button id="logout">${AUTH ? 'sign out' : 'switch'}</button>`
+                          : '<button id="logout">log in</button>';
+  // a reviewer picks between their own episodes and all of them; an admin can also pick anyone's
+  const names = AUTH || ME?.role === 'admin' ? [...ROSTER.reviewers, ...ROSTER.admins] : [];
+  const sel = $('#whoSel'), keep = sel.value;
+  sel.innerHTML = `${ME ? '<option value="@me">my assigned episodes</option>' : ''}<option value="">all episodes</option>`
+    + names.map(n => `<option value="${esc(n)}">assigned to ${esc(n)}</option>`).join('');
+  sel.value = [...sel.options].some(o => o.value === keep) ? keep : ME && !AUTH ? '@me' : '';
+  renderQAStats();
+}
+function setMe(j) {
+  ME = j; if (!AUTH) store('qa', j ? JSON.stringify(j) : '');
+  $('#login').hidden = true; showMe();
+  if (j && !AUTH) $('#whoSel').value = '@me';   // a local login lands on its own episodes
+  if (AUTH && !EPS.length) return location.reload();
+  applyFilter();
+  if (EDIT?.dirty) return;   // a re-login mid-edit (expired token) keeps the unsaved changes on screen
+  if (FILTERED.length && !FILTERED.includes(CUR)) open(FILTERED[0].id);
+  else if (CUR) open(CUR.id, false);   // redraw the save button for the new login
+}
+if (AUTH) AUTH.resume = setMe;
+function askLogin(text = '') {
+  if (AUTH) return AUTH.askLogin(text, setMe);
+  let pick = null;
+  const btn = n => `<button type="button" data-n="${esc(n)}">${esc(n)}</button>`;
+  $('#loginRev').innerHTML = ROSTER.reviewers.map(btn).join('') || '<span class="kv">none on the roster</span>';
+  $('#loginAdm').innerHTML = ROSTER.admins.map(btn).join('') || '<span class="kv">none on the roster</span>';
+  $('#loginPw').hidden = true; $('#loginMsg').textContent = text; $('#login').hidden = false;
+  renderQAStats();
+  const go = body => fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error); setMe(j); })
+    .catch(err => { $('#loginMsg').textContent = err.message; });
+  $('#login .gbox').onclick = ev => {
+    const b = ev.target.closest('button[data-n]'); if (!b) return;
+    pick = b.dataset.n;
+    $('#login').querySelectorAll('button[data-n]').forEach(x => x.classList.toggle('sel', x === b));
+    if (ROSTER.admins.includes(pick)) { $('#loginPw').hidden = false; $('#pw').value = ''; $('#pw').focus(); $('#loginMsg').textContent = ''; }
+    else go({ name: pick });
+  };
+  $('#loginPw').onsubmit = ev => { ev.preventDefault(); go({ name: pick, password: $('#pw').value }); };
+  $('#loginSkip').onclick = ev => { ev.preventDefault(); setMe(null); };
+}
+$('#me').addEventListener('click', ev => {
+  if (ev.target.id !== 'logout') return;
+  if (AUTH && ME) {
+    if (EDIT?.dirty && !confirm('Discard your unsaved edits and sign out?')) return;
+    return AUTH.logout().then(() => { EDIT = null; location.assign('/'); }).catch(err => askLogin(err.message));
+  }
+  askLogin();
+});
+const OPEN = new Set(), DETAIL = new Map();
+const byId = new Map();
+const taskLabel = e => e.task || '';
+const gkey = e => $('#ds').value ? taskLabel(e) : `${e.dataset} · ${taskLabel(e)}`;
+const detail = id => { if (!DETAIL.has(id)) DETAIL.set(id, request(`/api/episode?p=${encodeURIComponent(id)}`).then(r => r.json()).catch(err => { DETAIL.delete(id); throw err; })); return DETAIL.get(id); };
+
+const decisionBadge = x => x.selection_status && (CUR?.dataset !== 'EgoExoLearn' || x.selection_status !== 'chosen') ? `<span class="badge ${esc(x.selection_status)}" title="${esc((x.discard_reason || x.selection_reason || '').replaceAll('_', ' '))}">${esc(x.selection_status)}${x.split ? ` · ${esc(x.split)}` : ''}</span> ` : '';
+const levelLabel = e => (e.annotation_levels || []).join(' + ');
+function episodeTags(e) {
+  const badge = (text, cls = '', title = '') => `<span class="badge ${cls}"${title ? ` title="${esc(title)}"` : ''}>${esc(text)}</span>`;
+  return badge(e.dataset, 'ds') + (e.split ? badge((e.split_memberships || [e.split]).join(', '), `split ${esc(e.split)}`) : '')
+    + (levelLabel(e) ? badge(levelLabel(e), '', 'Available annotation levels') : '')
+    + (e.subtask_source ? badge(e.subtask_source, 'split', 'L2 caption source') : '')
+    + (e.scene ? badge(e.scene, 'split', 'Scene') : '')
+    + (e.selection_status && (e.dataset !== 'EgoExoLearn' || e.selection_status !== 'chosen') ? badge(e.selection_status, esc(e.selection_status), e.discard_reason || e.selection_reason) : '')
+    + (e.bucket && e.bucket !== 'main' && e.bucket !== 'test' ? badge(`${e.bucket} bucket`, 'split') : '')
+    + (e.flags || []).map(f => badge(f === 'annotation check' ? `⚑ check · ${e.n_flag}` : f, 'flag')).join('');
+}
+function episodeMetadata(d) {
+  const lines = [];
+  if (d.discard_reason || d.selection_reason) lines.push(`Reason: ${esc((d.discard_reason || d.selection_reason).replaceAll('_', ' '))}`);
+  if (d.source_splits?.length) lines.push(`Source split labels: ${esc(d.source_splits.join(', '))}`);
+  if (d.full_recording && d.source_duration_s != null) lines.push(`Source interval: 0 – ${fmt(d.source_duration_s)}`);
+  else if (d.clip_start != null && d.clip_end != null) lines.push(`Source interval: ${esc(d.clip_start)} – ${esc(d.clip_end)}s`);
+  const video = [d.resolution, d.actual_fps != null ? `FPS: ${d.actual_fps}` : '', d.source_duration_s != null ? fmt(d.source_duration_s) : ''].filter(Boolean);
+  if (video.length) lines.push(`Source video: ${esc(video.join(' · '))}`);
+  if (d.format_status) lines.push(esc(d.format_status));
+  if (d.subtask_source) lines.push(`L2 source: ${esc(d.subtask_source)}${d.edited ? ' · saved review' : ''}`);
+  if (d.full_recording) lines.push(`<b>Full recording</b> · ${d.subtasks.length + d.atomic.length} selected annotations at original recording timestamps.`);
+  return (lines.length ? `<div class="kv">${lines.join('<br>')}</div>` : '')
+    + (d.review_reasons?.length ? `<details class="kv"><summary>Review notes (${d.review_reasons.length})</summary><ul>${d.review_reasons.map(t => `<li>${esc(t)}</li>`).join('')}</ul></details>` : '')
+    + (d.source_tracks || []).map(track => `<details class="kv source-track"><summary>${esc(track.name)} · ${track.cues.length} original captions</summary>
+        ${track.note ? `<p>${esc(track.note)}</p>` : ''}<p>Original source timestamps; playback captions use video bounds. Click a time to seek.</p>
+        <table><thead><tr><th>start (s)</th><th>end (s)</th><th>caption</th></tr></thead><tbody>${track.cues.map(c =>
+          `<tr><td><button data-source-t="${esc(c.start)}">${esc(c.start)}</button></td><td>${esc(c.end)}</td><td>${esc(c.text)}</td></tr>`).join('')}</tbody></table></details>`).join('')
+    + (d.original_caption ? `<details class="kv"><summary>Original annotation text</summary><pre style="white-space:pre-wrap">${esc(d.original_caption)}</pre></details>` : '');
+}
+function fillFilters() {
+  const ds = $('#ds').value, eps = EPS.filter(e => !ds || e.dataset === ds);
+  const fill = (id, values, label, text = x => x.replaceAll('_', ' ')) => {
+    const sel = $(id), selected = sel.value, options = [...new Set(values.filter(Boolean))].sort();
+    sel.innerHTML = `<option value="">${label}</option>` + options.map(t => `<option value="${esc(t)}">${esc(text(t))}</option>`).join('');
+    if (options.includes(selected)) sel.value = selected;
+    sel.hidden = sel.disabled = !options.length;
+  };
+  fill('#taskSel', eps.map(taskLabel), 'all tasks');
+  fill('#sceneSel', eps.map(e => e.scene), 'all scenes');
+  fill('#levelSel', eps.map(levelLabel), 'all annotation levels', x => x.includes(' + ') ? 'L2 + L3.5 (both)' : `${x} only`);
+  const flags = eps.flatMap(e => e.flags || []);
+  fill('#flagSel', flags.length ? ['@flagged', '@clear', ...flags] : [], 'all flags', x => x === '@flagged' ? 'any flag' : x === '@clear' ? 'no flags' : x);
+  const hasQA = eps.some(e => e.assignee || e.qa);
+  $('#whoSel').hidden = $('#whoSel').disabled = !eps.some(e => e.assignee);
+  $('#qaSel').hidden = $('#qaSel').disabled = !hasQA;
+  if ($('#whoSel').hidden) $('#whoSel').value = '';
+  if (!hasQA) $('#qaSel').value = '';
+}
+
+function applyFilter() {
+  fillFilters();
+  const ds = $('#ds').value, split = $('#splitSel').value, sort = $('#sort').value;
+  const flag = $('#flagSel').value, qa = $('#qaSel').value;
+  const task = $('#taskSel').value;
+  const scene = $('#sceneSel').value, level = $('#levelSel').value;
+  const who = $('#whoSel').value === '@me' ? ME?.name : $('#whoSel').value;
+  FILTERED = EPS.filter(e => (!ds || e.dataset === ds)
+                             && (!who || e.assignee === who) && (!qa || (qa === 'todo' ? !e.qa : e.qa === qa))
+                              && (!flag || (flag === '@flagged' ? e.flags.length : flag === '@clear' ? !e.flags.length : e.flags.includes(flag)))
+                              && (!scene || e.scene === scene) && (!level || levelLabel(e) === level)
+                              && (!HITS || HITS.has(e.id))
+                             && (!split || (e.split_memberships || [e.split]).includes(split))
+                             && (!task || taskLabel(e) === task));
+  const key = { task: e => taskLabel(e).toLowerCase(), dur: e => -e.duration, nsub: e => -e.n_sub, natom: e => -e.n_atomic }[sort];
+  FILTERED.sort((a, b) => { const x = key(a), y = key(b);
+    return x < y ? -1 : x > y ? 1 : a.dataset < b.dataset ? -1 : a.dataset > b.dataset ? 1 : a.id < b.id ? -1 : 1; });
+  const m = new Map();
+  for (const e of FILTERED) { const k = gkey(e); if (!m.has(k)) m.set(k, []); m.get(k).push(e); }
+  GROUPS = [...m.entries()];
+  if (HITS && GROUPS.length <= 40) GROUPS.forEach(([t]) => OPEN.add(t));  // a narrow search means "show me the matches"
+  const subs = FILTERED.reduce((n, e) => n + e.n_sub, 0), lines = FILTERED.reduce((n, e) => n + e.n_atomic, 0);
+  $('#count').textContent = `${FILTERED.length.toLocaleString()}/${EPS.length.toLocaleString()} episodes · ${subs.toLocaleString()} sub-tasks · ${lines.toLocaleString()} atomic lines`;
+  $('#gcount').textContent = `${GROUPS.length} tasks`;
+  renderList();
+}
+
+// Rows exist only for open groups: 12k+ episodes are too many to keep in the DOM.
+function renderList() {
+  $('#list').innerHTML = GROUPS.map(([g, eps]) => `
+    <div class="grp${OPEN.has(g) ? ' open' : ''}${eps.includes(CUR) ? ' has-cur' : ''}" data-g="${esc(g)}">
+      <div class="hd"><span>${esc(g)}</span><span class="n">${eps.length}</span></div>
+      ${!OPEN.has(g) ? '' : eps.map(e => `
+        <div class="row${e === CUR ? ' active' : ''}" data-p="${esc(e.id)}">
+          ${qaLight(e)}<code>${esc(e.uid.split('/').pop())}</code><span class="m">${fmt(e.duration)}</span>
+          <span class="m">${e.n_sub} sub-tasks · ${e.n_atomic} atomic</span><span class="sp"></span>
+          <div class="tags">${episodeTags(e)}</div></div>`).join('')}
+    </div>`).join('');
+}
+$('#list').addEventListener('click', ev => {
+  const r = ev.target.closest('.row'); if (r) return open(r.dataset.p);
+  const h = ev.target.closest('.hd'); if (!h) return;
+  const g = h.parentElement.dataset.g;
+  OPEN.has(g) ? OPEN.delete(g) : OPEN.add(g); renderList();
+});
+$('#expand').addEventListener('click', () => { GROUPS.forEach(([g]) => OPEN.add(g)); renderList(); });
+$('#collapse').addEventListener('click', () => { OPEN.clear(); renderList(); });
+
+function open(id, push = true) {
+  const e = byId.get(id); if (!e) return;
+  if (EDIT && e !== CUR) {
+    if (EDIT.dirty && !confirm('Discard your unsaved edits?')) { if (!push && CUR) location.hash = encodeURIComponent(CUR.id); return; }
+    EDIT = null;
+  }
+  CUR = e;
+  if (push) location.hash = encodeURIComponent(id);
+  OPEN.add(gkey(e));
+  renderList();
+  const act = $('#list .row.active'); if (act) act.scrollIntoView({ block: 'nearest' });
+  detail(id).then(d => { if (CUR === e) renderView(e, d); }).catch(err => {
+    if (CUR === e) $('#view').textContent = err.message;
+  });
+}
+const step = d => { const i = FILTERED.indexOf(CUR); if (FILTERED[i + d]) open(FILTERED[i + d].id); };
+const random = () => { if (FILTERED.length) open(FILTERED[Math.floor(Math.random() * FILTERED.length)].id); };
+
+function renderView(e, d, t0, sel0) {
+  const comparisonOpen = t0 !== undefined ? $('#captionCompare')?.open : d.version > 0;
+  const i = FILTERED.indexOf(e), hasSub = d.subtasks.length > 0;
+  const q = `p=${encodeURIComponent(e.id)}`;
+  const dur = e.duration || Math.max(1, ...d.atomic.map(a => a.end));
+  const END = Math.floor(dur * 10 + 1e-6) / 10;   // latest end on the 0.1 s grid that stays inside the video
+  // the levels on screen: the saved ones, or the working copy while editing
+  const lv = () => EDIT ? { ins: EDIT.ins, subs: EDIT.subs.map((s, k) => ({ i: k, start: s.start, end: s.end, desc: s.text, check: s.check })),
+                            atoms: EDIT.atoms.map(a => ({ start: a.start, end: a.end, text: a.text, cue: -1 })) }
+                        : { ins: d.instruction, subs: d.subtasks, atoms: d.atomic };
+  // a check verdict under its line: error type, suggested text, what the blind pass saw
+  // (the task verdict's suggestion carries the row's "name: " prefix, the text it judged does not). `text` is the
+  // line as it stands: equal to the suggestion when the fix is already in (EgoDex rows ship with it applied).
+  const note = (c, text, who = '') => {
+    if (!c) return '';
+    const done = text === c.new;
+    const [o, n] = wdiff(c.old || '', c.task_name && c.new.startsWith(`${c.task_name}: `) ? c.new.slice(c.task_name.length + 2) : c.new);
+    return `<div class="chk">⚑ Qwen check${who ? ` on ${who}` : ''} · <b>${esc(c.error)}</b>${done ? ' · fix applied' : ''}
+      <div class="df"><span class="k">original</span><span>${o}</span><span class="k">${done ? 'Qwen fix' : 'suggested'}</span><span>${n}</span></div>
+      ${c.saw ? `<span class="saw">saw: ${esc(c.saw)}</span>` : ''}</div>`;
+  };
+  $('#view').innerHTML = `
+    <div class="nav"><button id="prev" ${i <= 0 ? 'disabled' : ''}>◀ prev</button><button id="next" ${i >= FILTERED.length - 1 ? 'disabled' : ''}>next ▶</button><button id="rand">random</button>
+      <span class="pos">${i + 1} / ${FILTERED.length}</span>
+      <span class="sp"></span><button id="guideBtn" title="how to view and edit, all the keys (?)">? Guide</button></div>
+    <div class="title"><h2 title="filter to this task">${esc(taskLabel(e) || '(no task)')}</h2><code>${esc(e.uid)}</code>
+      ${episodeTags(d)}
+      ${d.assignee ? `<span class="badge who">assigned to ${esc(d.assignee)}</span>` : ''}
+      ${d.qa ? `<span class="badge qa ${d.qa}">${qaLight(d)} ${d.qa === 'corrected' ? 'corrected' : 'saved unchanged'} by ${esc(d.edited.editor)} · ${esc(d.edited.time)}</span>` : ''}
+      </div>
+    <div class="kv">${fmt(e.duration)} · <b>1</b> instruction → <b>${d.subtasks.length || '—'}</b> sub-tasks → <b>${d.atomic.length}</b> atomic lines
+      ${hasSub ? ` (<b>${(d.atomic.length / d.subtasks.length).toFixed(1)}</b> per sub-task)` : ''} · <code>${esc(d.source)}</code></div>
+    ${episodeMetadata(d)}
+    <div class="cams"><label><input type="checkbox" id="cc" checked> captions on video</label>
+      <button id="fs">⛶ fullscreen</button>
+      <label class="videoSize">video size <input type="range" id="videoSize" min="25" max="100" step="5" value="${VIDEO_SIZE}"
+        aria-label="Displayed video size" aria-valuetext="${VIDEO_SIZE}%"><output id="videoSizeValue" for="videoSize">${VIDEO_SIZE}%</output></label><span class="sp"></span>
+      <label>speed <select id="rate">${[0.5, 1, 1.5, 2, 4].map(x => `<option ${x === RATE ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
+    <div id="videos" style="width:${VIDEO_SIZE}%; --video-scale:${VIDEO_SIZE / 100}"><div id="stage"><video controls preload="metadata" src="${mediaBase}/video?${q}">
+        <track kind="subtitles" label="sub-task + atomic" srclang="en" default src="${mediaBase}/vtt?${q}&v=${d.version}"></video>
+      <div id="ovl"><div class="s hide" id="ovlSub"></div><div class="a hide" id="ovlAtom"></div></div></div></div>
+    <div class="tlbar">
+      ${canSave(e) ? `<label class="switch" title="edit mode: correct the times and text (on by default, remembered in this browser)"><input type="checkbox" id="edMode" ${EDITON ? 'checked' : ''}><i></i>Edit mode</label>
+      <button id="reset" title="restore original captions; saved versions stay in history">↺ reset</button>`
+        : `<span class="kv" style="margin:0">view only${e.assignee ? ` · assigned to ${esc(e.assignee)}` : ''}${ME ? '' : ' · log in to edit'}</span>`}
+      <button id="compareBtn" aria-controls="captionCompare" aria-expanded="${!!comparisonOpen}">Before / after</button>
+      <span class="edonly">
+        <label title="when a start or end moves, a neighbour that shares it moves along; off, a caption stops at its neighbours"><input type="checkbox" id="link" ${LINK ? 'checked' : ''}> move shared boundaries</label>
+        <label title="a dragged edge that comes near the playhead lands on it"><input type="checkbox" id="magnet" ${MAGNET ? 'checked' : ''}> magnet</label>
+        <span id="edmsg"></span></span><span class="sp"></span>
+      <span class="edonly"><button id="edDiscard" title="drop the unsaved changes">discard</button><button id="edSave" class="pri" title="save (Ctrl+S)">save</button></span></div>
+    <div class="selbox" id="selbox"></div>
+    <div class="tlrow"><div class="tlgut"><span class="zoom"><button id="zOut" title="zoom out">−</button><button id="zFit" title="fit the whole episode">fit</button><button id="zIn" title="zoom in">+</button></span><span class="ins">1 instruction</span><span class="sub">2 sub-task</span><span class="atom">3 atomic</span></div>
+    <div class="tlwrap"><div class="tlc"><div class="ruler"></div><div class="tl">
+      <div class="lane ins" id="laneIns"></div>
+      <div class="lane sub${hasSub ? '' : ' none'}" id="laneSub">${hasSub ? '' : `no sub-task level in ${esc(e.dataset)}`}</div>
+      <div class="lane atom" id="laneAtom"></div></div><div class="head"></div></div></div></div>
+    <div class="legend"><span><i style="background:var(--ins-bg)"></i>1 instruction (episode)</span>
+      <span><i style="background:var(--sub-bg)"></i>2 sub-task (${esc(d.subtask_source || 'native annotation')})</span>
+      <span><i style="background:var(--atom-bg)"></i>3 atomic action (training target)</span>
+      ${d.partial ? '<span><i style="background:#fff1d6;outline:1px dashed var(--warn);outline-offset:-1px"></i>sub-task kept unsplit</span>' : ''}
+      ${d.n_flag ? '<span><i style="background:#f6cccc"></i>⚑ judged wrong by the task / sub-task check (suggestion under the line)</span>' : ''}</div>
+    <details id="captionCompare" class="compare" ${comparisonOpen ? 'open' : ''}>
+      <summary>Before / after <span id="cmpCount"></span></summary>
+      <div class="cmp-controls">
+        <label>Before<select id="cmpBefore" aria-label="Before version"></select></label>
+        <label>After<select id="cmpAfter" aria-label="After version"></select></label>
+        <label><input type="checkbox" id="cmpUnchanged">Show unchanged captions</label>
+      </div>
+      <p class="cmp-meta" id="cmpMeta"></p><div class="cmp-content" id="cmpContent"></div>
+    </details>
+    <div id="levels"></div>`;
+
+  const v = $('#videos video');
+  const versions = d.history || [];
+  const option = revision => `<option value="${revision.version}" ${revision.available ? '' : 'disabled'}>Version ${revision.version}${revision.revert ? ' · restored original' : ''} · ${esc(revision.editor)}${revision.earlier_source ? ' · earlier source' : ''}${revision.available ? '' : ' · unavailable'}</option>`;
+  $('#cmpBefore').innerHTML = '<option value="0">Original captions</option><option value="previous">Before selected change</option>' + versions.map(option).join('');
+  $('#cmpAfter').innerHTML = '<option value="current">Current saved captions</option><option value="0">Original captions</option>' + versions.map(option).join('');
+  const compareTime = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, '0')}`;
+  function drawComparison() {
+    const levels = lv();
+    const current = { instruction: levels.ins, subtasks: levels.subs.map(s => ({ ...s, text: s.desc })), atomic: levels.atoms };
+    const afterValue = $('#cmpAfter').value;
+    const afterRevision = versions.find(r => String(r.version) === (afterValue === 'current' ? String(d.version) : afterValue));
+    const saved = { instruction: d.instruction, subtasks: d.subtasks.map(s => ({ ...s, text: s.desc })), atomic: d.atomic };
+    const selected = value => value === 'current' ? current : value === '0' ? d.original : versions.find(r => String(r.version) === value)?.captions;
+    const beforeValue = $('#cmpBefore').value;
+    const previous = afterValue === 'current' && EDIT?.dirty ? saved
+      : afterValue === 'current' && afterRevision?.earlier_source ? d.original : afterRevision?.before || d.original;
+    const original = afterValue === 'current' ? d.original : afterRevision?.original || d.original;
+    const before = beforeValue === 'previous' ? previous : beforeValue === '0' ? original : selected(beforeValue);
+    const after = selected(afterValue);
+    $('#cmpAfter option[value="current"]').textContent = EDIT?.dirty ? 'Unsaved draft' : d.version ? `Current saved captions · version ${d.version}` : 'Original captions (current)';
+    if (!before || !after) {
+      $('#cmpContent').textContent = 'Comparison unavailable for this source.';
+      return;
+    }
+    const describe = (value, isBefore = false) => {
+      if (value === 'previous') return 'Captions before selected change';
+      if (value === '0') return isBefore && afterRevision && afterValue !== 'current' ? `Original captions for version ${afterRevision.version}` : 'Original captions';
+      if (value === 'current' && EDIT?.dirty) return 'Unsaved draft · not saved yet';
+      const revision = versions.find(r => String(r.version) === (value === 'current' ? String(d.version) : value));
+      if (value === 'current' && revision?.earlier_source) return 'Current original captions · saved history belongs to an earlier source';
+      const savedAt = revision?.time.includes('T') ? new Date(revision.time).toLocaleString() : revision?.time;
+      return revision ? `Version ${revision.version}${revision.revert ? ' · restored original' : ''}${revision.earlier_source ? ' · earlier source' : ''} · ${revision.editor} · ${savedAt}` : 'Original captions';
+    };
+    $('#cmpMeta').textContent = `Before: ${describe(beforeValue, true)}. After: ${describe(afterValue)}.`;
+    let changes = 0;
+    const groups = [ ['Instruction', [[{ text: before.instruction }, { text: after.instruction }]], false],
+      ['Sub-tasks', captionPairs(before.subtasks, after.subtasks), true],
+      ['Atomic actions', captionPairs(before.atomic, after.atomic), true] ];
+    const body = groups.map(([title, pairs, timed]) => {
+      const rows = pairs.map(([old, next]) => {
+        const textChanged = !!old && !!next && old.text !== next.text;
+        const timeChanged = timed && !!old && !!next && (Math.abs(old.start - next.start) > 1e-6 || Math.abs(old.end - next.end) > 1e-6);
+        const changed = !old || !next || textChanged || timeChanged;
+        if (changed) changes++;
+        if (!changed && !$('#cmpUnchanged').checked) return '';
+        // ponytail: large captions use whole-text highlights; word diff capped at 40,000 token pairs.
+        const words = textChanged && old.text.split(/\s+/).length * next.text.split(/\s+/).length <= 40000;
+        const texts = textChanged ? words ? wdiff(old.text, next.text) : [`<del>${esc(old.text)}</del>`, `<ins>${esc(next.text)}</ins>`]
+          : [old ? esc(old.text) : '', next ? esc(next.text) : ''];
+        const labels = !old ? ['Added caption'] : !next ? ['Removed caption'] : [textChanged && 'Text changed', timeChanged && 'Timing changed'].filter(Boolean);
+        const cell = (cue, index) => `<td data-label="${index ? 'After' : 'Before'}">${labels.map(label => `<span class="cmp-tag">${label}</span>`).join('')}
+          ${cue && timed ? `<button class="cmp-time" data-t="${cue.start}" aria-label="Jump to ${index ? 'after' : 'before'} caption at ${compareTime(cue.start)}">▶ ${compareTime(cue.start)} – ${compareTime(cue.end)}</button>` : ''}
+          <p>${cue ? texts[index] : '<span class="cmp-empty">No caption</span>'}</p></td>`;
+        return `<tr>${cell(old, 0)}${cell(next, 1)}</tr>`;
+      }).join('');
+      return rows ? `<table><caption>${title}</caption><thead><tr><th scope="col">Before</th><th scope="col">After</th></tr></thead><tbody>${rows}</tbody></table>` : '';
+    }).join('');
+    $('#cmpCount').textContent = changes ? `${changes} changed ${changes === 1 ? 'caption' : 'captions'}` : 'No changes';
+    $('#cmpContent').innerHTML = body || '<p class="cmp-empty">Captions match. Select a saved version or show unchanged captions to inspect them.</p>';
+  }
+  for (const selector of ['#cmpBefore', '#cmpAfter', '#cmpUnchanged']) $(selector).addEventListener('change', drawComparison);
+  $('#cmpContent').addEventListener('click', event => {
+    const button = event.target.closest('button[data-t]');
+    if (button) { v.currentTime = +button.dataset.t; v.play().catch(() => {}); v.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  });
+  const comparison = $('#captionCompare');
+  comparison.addEventListener('toggle', () => {
+    $('#compareBtn').setAttribute('aria-expanded', String(comparison.open));
+    if (comparison.open && matchMedia('(max-width:700px)').matches) showSide(false);
+  });
+  $('#compareBtn').addEventListener('click', () => {
+    comparison.open = !comparison.open;
+    if (comparison.open) comparison.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
+  v.playbackRate = RATE;
+  if (t0) v.addEventListener('loadedmetadata', () => { v.currentTime = t0; }, { once: true });
+  let lastSub = -2, lastAtom = -2;
+  const follow = () => {
+    const t = v.currentTime, { subs, atoms } = lv();
+    $('.tlwrap .head').style.left = `${100 * t / dur}%`;
+    const si = subs.findIndex(s => t >= s.start && t < s.end);
+    const ai = atoms.findIndex(a => t >= a.start && t < a.end);
+    if (si !== lastSub) {
+      lastSub = si;
+      document.querySelectorAll('[data-sub]').forEach(el => el.classList.toggle('active', +el.dataset.sub === si));
+      const s = subs[si];
+      $('#ovlSub').innerHTML = s ? decisionBadge(s) + esc(s.desc) : '';
+      $('#ovlSub').classList.toggle('hide', !s);
+    }
+    if (ai !== lastAtom) {
+      lastAtom = ai;
+      document.querySelectorAll('[data-atom]').forEach(el => el.classList.toggle('active', +el.dataset.atom === ai));
+      const a = atoms[ai];
+      $('#ovlAtom').innerHTML = a ? decisionBadge(a) + hands(a.text) : '';
+      $('#ovlAtom').classList.toggle('hide', !a);
+    }
+  };
+  const drawLanes = () => {
+    const { ins, subs, atoms } = lv(), grip = EDIT ? '<i class="hl"></i><i class="hr"></i>' : '';
+    $('.tl').classList.toggle('ed', !!EDIT);
+    $('#laneIns').innerHTML = `<div class="seg${d.check.task ? ' flag' : ''}" style="left:0;width:100%" title="${esc(ins)}">${esc(ins)}</div>`;
+    if (hasSub) $('#laneSub').innerHTML = subs.map(s => `<div class="seg ${esc(s.selection_status || '')}${s.check ? ' flag' : ''}" data-sub="${s.i}"
+        style="left:${100 * s.start / dur}%;width:${100 * (s.end - s.start) / dur}%"
+        title="${fmt(s.start)}–${fmt(s.end)}: ${esc(s.desc)} · ${esc(s.selection_status || '')} ${esc((s.discard_reason || '').replaceAll('_', ' '))}">${esc(s.desc)}${grip}</div>`).join('');
+    $('#laneAtom').innerHTML = atoms.map((a, k) => `<div class="seg ${esc(a.selection_status || '')}${a.fallback ? ' fb' : ''}" data-atom="${k}"
+        style="left:${100 * a.start / dur}%;width:${100 * (a.end - a.start) / dur}%"
+        title="${fmt(a.start)}–${fmt(a.end)}: ${esc(a.text)} · ${esc(a.selection_status || '')} ${esc((a.discard_reason || '').replaceAll('_', ' '))}">${esc(a.text.replace(/\[[a-z ]+\] ?/g, ''))}${grip}</div>`).join('');
+    lastSub = lastAtom = -2;
+    follow();
+    markSel();
+  };
+  // The selected line {l: 'subs' | 'atoms', k}: outlined on the timeline and in the table, shown with its parent
+  // in #selbox, and what the edit keys act on.
+  let SEL = sel0 || null;
+  const cur = () => SEL && lv()[SEL.l][SEL.k] ? SEL : null;
+  const lineName = (l, k) => `${l === 'subs' ? 'sub-task' : 'atomic line'} ${k + 1}`;
+  const markSel = () => {
+    const s = cur();
+    document.querySelectorAll('#view [data-sub], #view [data-atom]').forEach(el => {
+      const l = el.dataset.sub !== undefined ? 'subs' : 'atoms', k = +(el.dataset.sub ?? el.dataset.atom);
+      el.classList.toggle('sel', !!s && s.l === l && s.k === k);
+    });
+    drawSel();
+  };
+  const select = (l, k) => { SEL = { l, k }; markSel(); };
+  // the sub-task an atomic line overlaps most, -1 when none (the server's owner())
+  const ownerOf = (subs, a) => { let best = -1, ov = 0;
+    subs.forEach((s, j) => { const o = Math.min(a.end, s.end) - Math.max(a.start, s.start); if (o > ov) { ov = o; best = j; } });
+    return best; };
+  // #selbox: the parent line (an atomic line's sub-task, else the instruction) over the selected one. In edit mode the
+  // selected text is an input with the Add / Merge / Delete buttons; the skeleton is rebuilt only when the selection or
+  // the mode changes, so typing in it survives the redraws its own keystrokes cause.
+  let selKey = '';
+  const drawSel = () => {
+    const box = $('#selbox'), s = cur(), L = lv();
+    const key = s ? `${EDIT ? 'e' : 'v'}:${s.l}:${s.k}` : EDIT ? 'e' : 'v';
+    if (key !== selKey) {
+      selKey = key;
+      const lvl = s && (s.l === 'subs' ? 'sub' : 'atom');
+      box.innerHTML = !s ? `<div class="hint">Click a caption on the timeline or in the table to select it${EDIT ? ' and edit it here' : ''}.</div>`
+        : `<div class="selcard"><div class="selrow par" id="selP"><span class="chip" id="selPl"></span><span class="t" id="selPt"></span>
+             <span class="ptx" id="selPx"></span><span class="flg" id="selPf"></span></div>
+           <div class="selrow me ${lvl}">
+             <div class="selhd"><span class="chip ${lvl}">${lineName(s.l, s.k)}</span><span class="t" id="selT"></span>${EDIT ? `<span class="sp"></span>
+               <button class="act" data-op="add" id="selAdd">+ Add caption</button>
+               <button class="act" data-op="merge" id="selMerge" title="merge with the next caption, texts included (⇧M)">⇆ Merge</button>
+               <button class="act del" data-op="del" title="delete; its time stays a gap (⌫)">× Delete</button>` : ''}</div>
+             ${EDIT ? `<input id="selIn" class="selin" placeholder="${s.l === 'subs' ? 'sub-task' : '[left hand] … | [right hand] …'}">` : '<div class="seltx" id="selTx"></div>'}
+             <div class="warn" id="selWarn"></div></div>
+           <div id="selChk"></div></div>`;
+    }
+    if (!s) return;
+    const arr = L[s.l], x = arr[s.k], text = s.l === 'subs' ? x.desc : x.text, next = arr[s.k + 1];
+    const j = s.l === 'atoms' && hasSub ? ownerOf(L.subs, x) : -1;
+    const par = j >= 0 ? ['sub', `sub-task ${j + 1}`, L.subs[j].desc, L.subs[j], L.subs[j].check] : s.l === 'atoms' && hasSub
+      ? ['sub', 'sub-task', '(outside every sub-task)', null, null] : ['ins', 'instruction', L.ins, { start: 0, end: dur }, d.check.task];
+    $('#selP').className = `selrow par ${par[0]}`; $('#selPl').className = `chip ${par[0]}`; $('#selPl').textContent = par[1];
+    $('#selPf').textContent = par[4] ? `⚑ ${par[4].error}` : '';
+    $('#selPt').textContent = par[3] ? `${fmt(par[3].start)} – ${fmt(par[3].end)}` : '';
+    $('#selPx').textContent = $('#selPx').title = par[2];
+    // Qwen's verdicts on the parent and on the selected sub-task, with the accept button in edit mode
+    const sc = s.l === 'subs' ? x.check : null;
+    $('#selChk').innerHTML = (par[4] ? note(par[4], par[2], par[1]) : '') + (sc ? note(sc, text, lineName(s.l, s.k))
+      + (EDIT && text !== sc.new ? '<button data-op="sugg" title="copy the suggested text into this sub-task">✓ use suggestion</button>' : '') : '');
+    $('#selT').textContent = `${fmt(x.start)} – ${fmt(x.end)} · ${(x.end - x.start).toFixed(1)} s`;
+    const dups = Object.entries(tagCount(text)).filter(([, n]) => n > 1);
+    $('#selWarn').innerHTML = dups.length ? `⚠ duplicated ${dups.map(([t, n]) => `${esc(t)} ×${n}`).join(', ')}: keep one clause per hand<div class="prev">${hands(text, true)}</div>` : '';
+    if (!EDIT) { $('#selTx').innerHTML = s.l === 'subs' ? esc(text) : hands(text, true); return; }
+    const inp = $('#selIn');
+    if (document.activeElement !== inp) inp.value = text;
+    inp.classList.toggle('dup', dups.length > 0);
+    const gap = (next ? next.start : END) - x.end;
+    $('#selAdd').disabled = gap < 0.1 - 1e-6;
+    $('#selAdd').title = gap < 0.1 - 1e-6 ? 'no gap after this caption: shorten it or the next one first (a)'
+      : `a new caption filling the ${gap.toFixed(1)} s gap after this one (a)`;
+    $('#selMerge').disabled = !next;
+  };
+  // ruler: finest tick 0.1 s once zoomed in far enough, ticks >= 8 px apart, labels >= 60 px apart
+  const drawRuler = () => {
+    const r = $('.ruler'), pxs = $('.tlc').offsetWidth / dur;
+    const st = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60].find(s => s * pxs >= 8) || 60;
+    const lab = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find(s => s >= st && s * pxs >= 60 && Math.abs(s / st - Math.round(s / st)) < 1e-9) || 600;
+    r.style.backgroundSize = `${st * pxs}px 5px`;
+    let h = '';
+    for (let n = 0; n * lab <= dur + 1e-9; n++) { const t = n * lab; h += `<span style="left:${100 * t / dur}%">${lab < 1 ? fmt(t) : fmt(t).slice(0, -2)}</span>`; }
+    r.innerHTML = h;
+  };
+  const setZoom = z => {
+    Z = clamp(z, 1, 40);
+    $('.tlc').style.width = `${Z * 100}%`;
+    drawRuler();
+    const w = $('.tlwrap');   // keep the playhead in view
+    w.scrollLeft = $('.tlc').offsetWidth * v.currentTime / dur - w.clientWidth / 2;
+  };
+  let busy = false;   // a drag or scrub owns the mouse: no auto-scroll under it
+  const keepHead = () => {
+    if (busy || Z <= 1) return;
+    const w = $('.tlwrap'), x = $('.tlc').offsetWidth * v.currentTime / dur;
+    if (x < w.scrollLeft || x > w.scrollLeft + w.clientWidth - 16) w.scrollLeft = x - w.clientWidth * 0.1;
+  };
+
+  // Table order, view and edit alike: each sub-task, then the atomic lines it overlaps most (the server's owner()),
+  // indented under it; a line outside every sub-task keeps its place in time.
+  const nestOrder = (subs, atoms) => {
+    const own = atoms.map(a => ownerOf(subs, a));
+    return [...subs.map((s, j) => ({ l: 'subs', i: j, key: s.start, o: 0 })),
+            ...atoms.map((a, k) => ({ l: 'atoms', i: k, key: own[k] < 0 ? a.start : subs[own[k]].start, o: 1, nest: own[k] >= 0 }))]
+      .sort((p, q) => p.key - q.key || p.o - q.o || p.i - q.i);
+  };
+  const atomRow = (a, k, nest) => `<tr class="atom${nest ? ' nest' : ''}${a.fallback ? ' fb' : ''}" data-t="${a.start}" data-atom="${k}">
+      <td class="lv"><span class="lvl">atomic ${k + 1}</span></td><td class="t">${fmt(a.start)}</td><td class="t">${fmt(a.end)}</td><td class="t">${(a.end - a.start).toFixed(1)}s</td>
+      <td class="d">${a.fallback ? '<span class="badge" title="this sub-task had no accepted split; its own line stands in">unsplit</span> ' : ''}${decisionBadge(a)}${hands(a.text)}</td></tr>`;
+  const subRow = s => `<tr class="sub${s.check ? ' flag' : ''}" data-t="${s.start}" data-sub="${s.i}"><td class="lv"><span class="lvl">sub-task ${s.i + 1}</span></td>
+      <td class="t">${fmt(s.start)}</td><td class="t">${fmt(s.end)}</td><td class="t">${(s.end - s.start).toFixed(1)}s</td><td>${decisionBadge(s)}${esc(s.desc)}${note(s.check, s.desc)}</td></tr>`;
+  const viewTable = () => `<table><thead><tr><th style="width:1%">level</th><th style="width:1%">start</th><th style="width:1%">end</th><th style="width:1%">dur</th><th>text</th></tr></thead><tbody>
+      <tr class="ins${d.check.task ? ' flag' : ''}"><td class="lv"><span class="lvl">instruction</span></td><td class="t">${fmt(0)}</td><td class="t">${fmt(e.duration)}</td><td class="t">${e.duration.toFixed(1)}s</td><td>${esc(d.instruction) || '<i>(none)</i>'}${note(d.check.task, d.instruction)}</td></tr>
+      ${hasSub ? '' : `<tr class="note"><td></td><td colspan="4">No timed sub-task annotations are available for this recording.</td></tr>`}
+      ${nestOrder(d.subtasks, d.atomic).map(r => r.l === 'subs' ? subRow(d.subtasks[r.i]) : atomRow(d.atomic[r.i], r.i, r.nest)).join('')}
+    </tbody></table>`;
+  // edit mode: the same nesting, one row per line with its time and text inputs
+  const edRow = (l, x, k, nest) => { const sub = l === 'subs';
+    return `<tr class="${sub ? 'sub' : 'atom'}${nest ? ' nest' : ''}${x.check ? ' flag' : ''}" data-l="${l}" data-k="${k}" data-${sub ? 'sub' : 'atom'}="${k}">
+      <td class="lv"><span class="lvl">${sub ? 'sub-task' : 'atomic'} ${k + 1}</span></td>
+      <td><input class="tm" data-f="start" value="${fmt(x.start)}"></td><td><input class="tm" data-f="end" value="${fmt(x.end)}"></td>
+      <td class="t">${(x.end - x.start).toFixed(1)}s</td>
+      <td><input class="tx" value="${esc(x.text)}"${sub ? '' : ' placeholder="[left hand] … | [right hand] …"'}>${note(x.check, x.text)}</td>
+      <td class="ops">${x.check && x.text !== x.check.new ? `<button data-op="sugg" data-tip="use Qwen's suggested text">✓</button>` : ''}<button data-op="go" data-tip="play from its start">▶</button><button data-op="s" data-tip="start = playhead">⇤</button><button data-op="e" data-tip="end = playhead">⇥</button><button data-op="cut" data-tip="cut in two at the playhead">✂</button><button data-op="del" data-tip="delete (its time stays a gap)">×</button></td></tr>`; };
+  const editTable = () => `<table class="ed"><thead><tr><th style="width:1%">level</th><th style="width:1%">start</th><th style="width:1%">end</th><th style="width:1%">dur</th><th>text</th><th style="width:1%"></th></tr></thead><tbody>
+      <tr class="ins${d.check.task ? ' flag' : ''}"><td class="lv"><span class="lvl">instruction</span></td><td class="t">${fmt(0)}</td><td class="t">${fmt(dur)}</td><td class="t">${dur.toFixed(1)}s</td>
+        <td colspan="2"><input class="tx" data-l="ins" value="${esc(EDIT.ins)}">${note(d.check.task, EDIT.ins)}${d.check.task && EDIT.ins !== d.check.task.new ? '<button data-op="sugg-ins" title="use the suggested instruction">✓ use suggestion</button>' : ''}</td></tr>
+      ${nestOrder(EDIT.subs, EDIT.atoms).map(r => edRow(r.l, EDIT[r.l][r.i], r.i, r.nest)).join('')}
+    </tbody></table>`;
+  const drawTable = () => {
+    $('#levels').innerHTML = EDIT ? editTable() : viewTable();
+    $('.tlbar').classList.toggle('on', !!EDIT);
+    if (EDIT) saveBtn();
+    drawComparison();
+  };
+  // Save is open to the assignee and the admins, changed or not: an unchanged save marks the episode checked (orange).
+  const saveBtn = () => {
+    const b = $('#edSave'), ok = canSave(e);
+    b.disabled = !ok; b.textContent = EDIT.dirty ? 'save' : 'save · no change';
+    b.title = ok ? (EDIT.dirty ? 'save (Ctrl+S)' : 'nothing changed: saving marks it checked, orange (Ctrl+S)')
+                 : ME ? `assigned to ${e.assignee || 'nobody'}: only they or an admin can save it` : 'log in (top right) to save';
+  };
+  const msg = (text, err) => { const m = $('#edmsg'); if (m) { m.textContent = text; m.classList.toggle('err', !!err); } };
+  const changed = (redraw = true) => {
+    EDIT.dirty = true;
+    msg('');
+    if (redraw) drawTable(); else { saveBtn(); drawComparison(); }
+    drawLanes();
+  };
+  // undo / redo: a snapshot of the three levels before each change
+  const snap = () => JSON.stringify({ ins: EDIT.ins, subs: EDIT.subs, atoms: EDIT.atoms });
+  const saveState = () => { EDIT.undo.push(snap()); if (EDIT.undo.length > 200) EDIT.undo.shift(); EDIT.redo = []; };
+  const undo = (from, to, what) => {
+    if (!from.length) return msg(`nothing to ${what}`);
+    to.push(snap()); Object.assign(EDIT, JSON.parse(from.pop()));
+    changed(); msg(`${what} done`);
+  };
+  const now = () => Math.min(END, Math.round(v.currentTime * 10) / 10);
+  const parseT = s => {
+    s = String(s).trim();
+    const m = s.match(/^(\d+):(\d+(?:\.\d*)?)$/);
+    const t = m ? +m[1] * 60 + +m[2] : /^\d+(\.\d*)?$/.test(s) ? +s : NaN;
+    return Number.isFinite(t) ? Math.min(END, Math.round(t * 10) / 10) : NaN;
+  };
+  // A start / end never runs over the neighbour; a linked one (shared boundary, LINK on) moves along and keeps 0.1 s.
+  const setT = (l, k, f, t) => {
+    const arr = EDIT[l], x = arr[k], old = x[f], st = f === 'start';
+    const nb = st ? arr[k - 1] : arr[k + 1], g = st ? 'end' : 'start', link = LINK && nb && Math.abs(nb[g] - old) < 1e-6;
+    const lo = st ? (link ? nb.start + 0.1 : nb ? nb[g] : 0) : x.start + 0.1;
+    const hi = st ? x.end - 0.1 : link ? nb.end - 0.1 : nb ? nb[g] : END;
+    const c = lo <= hi + 1e-9 ? grid(clamp(t, lo, hi)) : t;
+    if (Math.abs(c - x[f]) < 1e-9) return;
+    saveState();
+    x[f] = c;
+    if (link) nb[g] = c;
+    changed();
+    if (Math.abs(c - t) > 1e-9) msg(`${lineName(l, k)}: ${f} stopped at ${fmt(c)} by the ${st ? 'previous' : 'next'} ${nb ? 'line' : 'video edge'}`);
+  };
+  const post = (url, body) => request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(async r => {
+      const j = await r.json().catch(() => ({ error: r.statusText }));
+      if (r.status === 409) DETAIL.delete(e.id);   // reopening the episode fetches the newer copy
+      if (r.status === 401) askLogin(`${j.error}; your unsaved changes are kept, save again after`);
+      if (!r.ok) throw new Error(j.error || r.statusText);
+      return j;
+    });
+  const done = j => {
+    EDIT = null;
+    DETAIL.set(e.id, Promise.resolve(j));
+    Object.assign(e, { instruction: j.instruction, n_sub: j.subtasks.length, n_atomic: j.atomic.length,
+                       sub_durations: j.sub_durations, atomic_durations: j.atomic_durations,
+                       partial: j.partial, edited: j.edited, qa: j.qa, version: j.version,
+                       annotation_levels: j.annotation_levels, annotation_level: j.annotation_level, flags: j.flags });
+    applyFilter();
+    renderStats();
+    renderQAStats();
+    renderView(e, j, v.currentTime, SEL);
+  };
+  const save = () => {
+    if (!canSave(e)) return msg($('#edSave').title, true);
+    msg('saving …'); $('#edSave').disabled = true;
+    post('/api/edit', { ...(!AUTH && { token: ME.token }), id: e.id, version: EDIT.version, instruction: EDIT.ins, subtasks: EDIT.subs, atomic: EDIT.atoms })
+      .then(done, err => { msg(err.message, true); $('#edSave').disabled = false; });
+  };
+
+  // one edit op on line k of level l ('subs' | 'atoms'); the row buttons and the keys both land here
+  const run = (op, l, k) => {
+    const arr = EDIT[l], x = arr[k], t = now(), name = lineName(l, k);
+    if (op === 'go') { v.currentTime = x.start; v.play().catch(() => {}); return; }
+    if (op === 'sugg') { saveState(); x.text = x.check.new; return changed(); }
+    if (op === 's') return setT(l, k, 'start', t);
+    if (op === 'e') return setT(l, k, 'end', t);
+    if (op === 'cut') {
+      if (!(t > x.start && t < x.end)) return msg(`move the playhead inside ${name} first`, true);
+      saveState();
+      arr.splice(k + 1, 0, { start: t, end: x.end, text: x.text }); x.end = t;
+      SEL = { l, k: k + 1 };
+      return changed();
+    }
+    if (op === 'del') {
+      saveState();
+      const prev = arr[k - 1], next = arr[k + 1];
+      if (LINK && prev && Math.abs(prev.end - x.start) < 1e-6) prev.end = x.end;
+      else if (LINK && next && Math.abs(next.start - x.end) < 1e-6) next.start = x.start;
+      arr.splice(k, 1);
+      SEL = arr.length ? { l, k: Math.max(0, k - 1) } : null;   // the line before: + Add caption refills the hole
+      return changed();
+    }
+    if (op === 'merge') {   // the line takes over the next one's time; the texts are joined, duplicated hand tags left to fix
+      const next = arr[k + 1]; if (!next) return msg(`${name} is the last line`, true);
+      saveState();
+      x.end = next.end;
+      x.text = l === 'atoms' ? [x.text, next.text].filter(Boolean).join(' | ')
+                             : [x.text.replace(/\.\s*$/, ''), next.text].filter(Boolean).join('; ');
+      arr.splice(k + 1, 1);
+      SEL = { l, k };
+      changed(); editSel();
+      return msg(Object.values(tagCount(x.text)).some(n => n > 1) ? 'merged: fix the duplicated hand tags above the timeline' : 'merged');
+    }
+    if (op === 'add') {   // a new line filling the gap after line k, only where there is one
+      const stop = arr[k + 1] ? arr[k + 1].start : END;
+      if (stop - x.end < 0.1 - 1e-6) return msg(`no gap after ${name}: shorten it or the next line first`, true);
+      saveState();
+      arr.splice(k + 1, 0, { start: x.end, end: stop, text: '' });
+      SEL = { l, k: k + 1 };
+      changed(); editSel();
+    }
+  };
+  const editSel = () => { const i = $('#selIn'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } };
+  $('#levels').addEventListener('click', ev => {
+    if (!EDIT) {   // view mode: a row selects and seeks
+      const row = ev.target.closest('tr.sub, tr.atom'); if (!row) return;
+      select(row.dataset.sub !== undefined ? 'subs' : 'atoms', +(row.dataset.sub ?? row.dataset.atom));
+      v.currentTime = +row.dataset.t; follow(); v.play().catch(() => {});
+      return;
+    }
+    const b = ev.target.closest('button');
+    if (!b) { const tr = ev.target.closest('tr[data-l]'); if (tr) select(tr.dataset.l, +tr.dataset.k); return; }
+    const op = b.dataset.op; if (!op) return;
+    if (op === 'sugg-ins') { saveState(); EDIT.ins = d.check.task.new; return changed(); }
+    const tr = b.closest('tr[data-l]'), l = b.dataset.l || tr.dataset.l, k = tr ? +tr.dataset.k : undefined;
+    if (tr) select(l, k);
+    run(op, l, k);
+  });
+  $('#levels').addEventListener('focusin', ev => {   // a field in focus selects its line; its first keystroke is one undo step
+    if (!EDIT || !ev.target.matches('input.tx, input.tm')) return;
+    EDIT.typing = false;
+    const tr = ev.target.closest('tr[data-l]'); if (tr) select(tr.dataset.l, +tr.dataset.k);
+  });
+  $('#levels').addEventListener('input', ev => {
+    const inp = ev.target; if (!EDIT || !inp.classList.contains('tx')) return;
+    if (!EDIT.typing) { saveState(); EDIT.typing = true; }
+    if (inp.dataset.l === 'ins') EDIT.ins = inp.value;
+    else { const tr = inp.closest('tr'); EDIT[tr.dataset.l][+tr.dataset.k].text = inp.value; }
+    changed(false);
+  });
+  // #selbox: its buttons run on the selected line; its text field edits it (one undo step per focus, like the table's)
+  $('#selbox').addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-op]'), s = cur();
+    if (b && EDIT && s) run(b.dataset.op, s.l, s.k);
+  });
+  $('#selbox').addEventListener('focusin', ev => { if (EDIT && ev.target.id === 'selIn') EDIT.typing = false; });
+  $('#selbox').addEventListener('input', ev => {
+    const s = cur(); if (!EDIT || !s || ev.target.id !== 'selIn') return;
+    if (!EDIT.typing) { saveState(); EDIT.typing = true; }
+    EDIT[s.l][s.k].text = ev.target.value;
+    const t = $(`#levels tr[data-l="${s.l}"][data-k="${s.k}"] input.tx`); if (t) t.value = ev.target.value;
+    changed(false);
+  });
+  $('#levels').addEventListener('change', ev => {
+    const inp = ev.target;
+    if (!EDIT || !inp.classList.contains('tm')) return;
+    const t = parseT(inp.value), tr = inp.closest('tr');
+    if (Number.isNaN(t)) { inp.classList.add('bad'); return msg(`"${inp.value}" is not a time: use m:ss.s or seconds`, true); }
+    setT(tr.dataset.l, +tr.dataset.k, inp.dataset.f, t);
+  });
+  const startEdit = () => {
+    EDIT = { ins: d.instruction, subs: d.subtasks.map(s => ({ start: s.start, end: s.end, text: s.desc, check: s.check })),
+             atoms: d.atomic.map(a => ({ start: a.start, end: a.end, text: a.text })), version: d.version, dirty: false,
+             undo: [], redo: [], typing: false };
+    drawTable(); drawLanes();
+  };
+  // Reset: the saved edits go through /api/revert (logged), unsaved ones are just dropped.
+  const reset = () => {
+    const dirty = !!EDIT?.dirty;
+    if (!d.edited && !dirty) return msg('nothing to reset: this episode shows the original captions');
+    if (!confirm(d.edited ? `Restore the original captions?\n\nLast saved by ${d.edited.editor}, `
+                            + `${d.edited.time}. Saved versions remain in Before / after.${dirty ? ' Unsaved changes will be discarded.' : ''} This clears the episode's QA status.`
+                          : 'Drop your unsaved changes and go back to the original captions?')) return;
+    if (!d.edited) return EDITON ? startEdit() : (EDIT = null, drawTable(), drawLanes());
+    post('/api/revert', { ...(!AUTH && { token: ME.token }), id: e.id, version: d.version }).then(done, err => alert(err.message));
+  };
+
+  // Edit mode is a switch, on by default (remembered): each episode opens straight into it; only for one you may save.
+  $('#edMode')?.addEventListener('change', ev => {
+    if (!ev.target.checked && EDIT?.dirty && !confirm('Leave edit mode and drop your unsaved changes?')) { ev.target.checked = true; return; }
+    EDITON = ev.target.checked; store('edmode', EDITON ? '1' : '0');
+    if (EDITON) startEdit(); else { EDIT = null; drawTable(); drawLanes(); }
+  });
+  $('#edDiscard').addEventListener('click', () => { if (EDIT && (!EDIT.dirty || confirm('Drop your unsaved changes?'))) startEdit(); });
+  $('#edSave').addEventListener('click', () => save());
+  $('#reset')?.addEventListener('click', reset);
+  $('#link').addEventListener('change', ev => { LINK = ev.target.checked; store('link', LINK ? '1' : '0'); });
+  $('#guideBtn').addEventListener('click', () => guide(true));
+  if (EDITON && canSave(e)) startEdit(); else { drawTable(); drawLanes(); }
+  v.addEventListener('timeupdate', follow);
+  v.addEventListener('loadedmetadata', follow);
+  v.addEventListener('timeupdate', keepHead);
+  const seek = t => { v.currentTime = t; follow(); };
+  document.querySelectorAll('#view [data-source-t]').forEach(b => b.addEventListener('click', () => seek(clamp(+b.dataset.sourceT, 0, dur))));
+  // Timeline mouse: a line seeks to its start; the ruler or a bare lane scrubs. In edit mode a line drags
+  // (its body moves, an edge resizes) on the 0.1 s grid, taking a linked neighbour along (as the ⇤ / ⇥ buttons do).
+  $('.tlc').addEventListener('mousedown', ev => {
+    if (ev.button !== 0 || ev.target.closest('.tled')) return;   // clicks inside an in-place edit stay in it
+    ev.preventDefault();
+    document.activeElement.blur();   // commits a typed time and hands the keys back to the line shortcuts
+    const rect = $('.tlc').getBoundingClientRect(), spp = dur / rect.width, x0 = ev.clientX;   // seconds per pixel
+    const seg = ev.target.closest('.seg[data-sub], .seg[data-atom]');
+    let moved = false, saved = false;
+    const track = (onMove, onUp) => {
+      busy = true;
+      const mv = e2 => { if (!moved && Math.abs(e2.clientX - x0) < 3) return; moved = true; onMove(e2.clientX); };
+      const up = () => { busy = false; document.body.classList.remove('tldrag');
+        removeEventListener('mousemove', mv); removeEventListener('mouseup', up); onUp(); };
+      addEventListener('mousemove', mv); addEventListener('mouseup', up);
+    };
+    const at = cx => clamp((cx - rect.left) * spp, 0, dur);
+    if (!seg) { seek(at(x0)); return track(cx => seek(at(cx)), () => {}); }
+    const l = seg.dataset.sub !== undefined ? 'subs' : 'atoms', k = +(seg.dataset.sub ?? seg.dataset.atom);
+    select(l, k);
+    if (!EDIT) return seek(lv()[l][k].start);
+    const side = ev.target.classList.contains('hl') ? 'start' : ev.target.classList.contains('hr') ? 'end' : '';
+    const arr = EDIT[l], x = arr[k], s0 = x.start, e0 = x.end, len = e0 - s0, prev = arr[k - 1], next = arr[k + 1];
+    const lp = LINK && prev && Math.abs(prev.end - s0) < 1e-6, ln = LINK && next && Math.abs(next.start - e0) < 1e-6;
+    const lo = lp ? prev.start + 0.1 : prev ? Math.min(prev.end, s0) : 0;   // earliest start: a linked neighbour keeps 0.1 s, a free one is not overlapped
+    const hi = ln ? next.end - 0.1 : next ? Math.max(next.start, e0) : END;  // latest end
+    const mag = t => { const ph = now(); return MAGNET && Math.abs(t - ph) <= 10 * spp ? ph : t; };
+    track(cx => {
+      if (!saved) { saveState(); saved = true; }
+      const dt = (cx - x0) * spp;
+      if (side === 'start') x.start = clamp(grid(mag(s0 + dt)), lo, x.end - 0.1);
+      else if (side === 'end') x.end = clamp(grid(mag(e0 + dt)), x.start + 0.1, hi);
+      else {   // whichever edge comes near the playhead pulls the line onto it
+        let s = s0 + dt;
+        const ms = mag(s), me = mag(s + len);
+        if (ms !== s) s = ms; else if (me !== s + len) s = me - len;
+        x.start = clamp(grid(s), lo, hi - len); x.end = x.start + len;
+      }
+      if (lp) prev.end = x.start;
+      if (ln) next.start = x.end;
+      document.body.classList.add('tldrag');
+      drawLanes();
+    }, () => { if (moved) changed(); else seek(x.start); });
+  });
+  // Edit mode: double-click a caption on the timeline to correct its text in place (Enter / click away keeps it, Esc drops it).
+  $('.tlc').addEventListener('dblclick', ev => {
+    const seg = ev.target.closest('.seg');
+    if (!EDIT || !seg || seg.classList.contains('editing') || ev.target.matches('.hl, .hr')) return;
+    const l = seg.dataset.sub !== undefined ? 'subs' : seg.dataset.atom !== undefined ? 'atoms' : 'ins', k = +(seg.dataset.sub ?? seg.dataset.atom);
+    const old = l === 'ins' ? EDIT.ins : EDIT[l][k].text, inp = document.createElement('input');
+    inp.className = 'tled'; inp.value = old;
+    if (seg.offsetLeft > seg.parentElement.offsetWidth - 320) { inp.style.left = 'auto'; inp.style.right = '0'; }   // opens leftwards near the end
+    seg.classList.add('editing'); seg.appendChild(inp); inp.focus();
+    let fin = false;
+    const end = keep => {
+      if (fin) return; fin = true;
+      if (keep && inp.value !== old) { saveState(); if (l === 'ins') EDIT.ins = inp.value; else EDIT[l][k].text = inp.value; changed(); }
+      else drawLanes();
+    };
+    inp.addEventListener('keydown', e2 => { e2.stopPropagation(); if (e2.key === 'Enter') end(true); else if (e2.key === 'Escape') end(false); });
+    inp.addEventListener('blur', () => end(true));
+  });
+  $('#zIn').addEventListener('click', () => setZoom(Z * 1.5));
+  $('#zOut').addEventListener('click', () => setZoom(Z / 1.5));
+  $('#zFit').addEventListener('click', () => setZoom(1));
+  $('#magnet').addEventListener('change', ev => { MAGNET = ev.target.checked; store('magnet', MAGNET ? '1' : '0'); });
+  RO?.disconnect();   // the ruler is in pixels: redraw it when the timeline's width changes
+  RO = new ResizeObserver(drawRuler); RO.observe($('.tlwrap'));
+  setZoom(Z);
+  const syncCC = () => {
+    const nativeFS = document.fullscreenElement === v, on = $('#cc').checked;
+    if (v.textTracks[0]) v.textTracks[0].mode = on && nativeFS ? 'showing' : 'hidden';
+    $('#ovl').style.display = on && !nativeFS ? '' : 'none';
+  };
+  document.onfullscreenchange = syncCC;   // assignment: no listener pile-up across renders
+  syncCC();
+  $('#cc').addEventListener('change', syncCC);
+  $('#fs').addEventListener('click', () => { document.fullscreenElement ? document.exitFullscreen() : $('#stage').requestFullscreen(); });
+  $('#rate').addEventListener('change', ev => { RATE = +ev.target.value; store('rate', RATE); v.playbackRate = RATE; });
+  $('#videoSize').addEventListener('input', ev => {
+    VIDEO_SIZE = +ev.target.value; store('video-size', VIDEO_SIZE);
+    $('#videos').style.width = `${VIDEO_SIZE}%`;
+    $('#videos').style.setProperty('--video-scale', VIDEO_SIZE / 100);
+    $('#videoSizeValue').value = `${VIDEO_SIZE}%`;
+    ev.target.setAttribute('aria-valuetext', `${VIDEO_SIZE}%`);
+  });
+  $('#prev').addEventListener('click', () => step(-1));
+  $('#next').addEventListener('click', () => step(1));
+  $('#rand').addEventListener('click', random);
+  $('.title h2').addEventListener('click', () => { $('#q').value = e.task; search(); });
+  // Edit-mode keys, after the review editor's; the document handler asks this first.
+  EDITKEY = ev => {
+    if (!EDIT) return false;
+    const inp = ev.target.closest('#levels input, #selbox input');
+    if (!inp && ev.target.matches('input, select, textarea')) return false;
+    const mod = ev.ctrlKey || ev.metaKey, key = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+    const done = f => { ev.preventDefault(); f(); return true; };
+    if (mod && key === 'z') return done(() => ev.shiftKey ? undo(EDIT.redo, EDIT.undo, 'redo') : undo(EDIT.undo, EDIT.redo, 'undo'));
+    if (mod && key === 'y') return done(() => undo(EDIT.redo, EDIT.undo, 'redo'));
+    if (mod && key === 's') return done(() => { document.activeElement.blur(); if (EDIT) save(); });   // blur commits a typed time
+    if (inp) {
+      if (ev.key === 'Enter' || ev.key === 'Escape') return done(() => inp.blur());
+      if (inp.matches('.tm') && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) return done(() => {
+        const tr = inp.closest('tr'), l = tr.dataset.l, k = +tr.dataset.k, f = inp.dataset.f;
+        setT(l, k, f, clamp(grid(EDIT[l][k][f] + (ev.key === 'ArrowUp' ? 1 : -1) * (ev.shiftKey ? 0.5 : 0.1)), 0, END));
+        $(`#levels tr[data-l="${l}"][data-k="${k}"] input.tm[data-f="${f}"]`).focus();
+      });
+      return false;
+    }
+    if (mod || ev.altKey || (ev.key === 'Enter' && ev.target.matches('button'))) return false;
+    const s = cur(), l = s ? s.l : 'atoms', arr = EDIT[l];
+    const need = f => s ? f(s.k) : msg('select a line first: click it on the timeline or in the table', true);
+    if (key === 'c') return done(() => {
+      const k = arr.findIndex(y => now() > y.start && now() < y.end);
+      k < 0 ? msg(`the playhead is not inside a ${l === 'subs' ? 'sub-task' : 'atomic line'}`, true) : run('cut', l, k);
+    });
+    if (key === 'a') return done(() => need(k => run('add', l, k)));
+    if (key === 'o') return done(() => need(k => {
+      if (now() < arr[k].start + 0.1) return msg(`the playhead is at or before the start of ${lineName(l, k)}`, true);
+      run('e', l, k); if (EDIT[l][k + 1]) select(l, k + 1);
+    }));
+    if (key === 'Backspace' || key === 'Delete') return done(() => need(k => run('del', l, k)));
+    if (key === 'm' && ev.shiftKey) return done(() => need(k => run('merge', l, k)));
+    if (key === 'Enter') return done(() => need(editSel));
+    if ((ev.code === 'BracketLeft' || ev.code === 'BracketRight') && !ev.shiftKey) return done(() => {
+      const nk = s ? s.k + (ev.code === 'BracketRight' ? 1 : -1) : 0;
+      if (arr[nk]) { select(l, nk); seek(arr[nk].start); }
+    });
+    return false;
+  };
+  v.focus();
+}
+
+document.addEventListener('keydown', ev => {
+  if (!$('#guide').hidden && (ev.key === 'Escape' || ev.key === '?')) { ev.preventDefault(); return guide(false); }
+  if (EDITKEY && EDITKEY(ev)) return;
+  if (ev.target.matches('input, select, textarea') || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  const v = document.querySelector('#videos video'), d = CUR && DETAIL.get(CUR.id);
+  const br = { BracketLeft: -1, BracketRight: 1 }[ev.code];   // [ / ] = k / j, ⇧[ / ⇧] = episode
+  const key = br && !ev.shiftKey ? (br > 0 ? 'j' : 'k') : ev.key;
+  if (br && ev.shiftKey) step(br);
+  else if (key === '?') guide(true);
+  else if (key === 'r') random();
+  else if (key === 'f') document.querySelector('#fs')?.click();
+  else if (key === '/') { ev.preventDefault(); $('#q').focus(); $('#q').select(); }
+  else if ('jkJK'.includes(key) && v && d) d.then(x => {
+    const items = 'jk'.includes(key) ? x.atomic : x.subtasks;
+    const t = v.currentTime, cur = items.findIndex(s => t >= s.start && t < s.end);
+    const fwd = key === 'j' || key === 'J';
+    const nx = fwd ? items[cur + 1] : (cur > 0 && t - items[cur].start < 1 ? items[cur - 1] : items[Math.max(cur, 0)]);
+    if (nx) v.currentTime = nx.start;
+  });
+  else if ((key === 'ArrowLeft' || key === 'ArrowRight') && v) {   // 0.1 s ticks on the grid, ⇧ 0.5 s
+    ev.preventDefault(); v.pause();
+    v.currentTime = Math.max(0, grid(grid(v.currentTime) + (key === 'ArrowRight' ? 1 : -1) * (ev.shiftKey ? 0.5 : 0.1)));
+  }
+  else if (key === ' ' && v && ev.target.tagName !== 'VIDEO') { ev.preventDefault(); v.paused ? v.play() : v.pause(); }
+});
+
+// The guide: how to view and edit, every key. ? or the Guide button opens it; Esc, ? or a click outside closes it.
+const guide = on => { $('#guide').hidden = !on; };
+$('#guide').addEventListener('click', ev => { if (ev.target.id === 'guide' || ev.target.id === 'guideX') guide(false); });
+
+// Episode list: ☰ hides it, its right edge drags to resize; both kept in the browser.
+const SIDE_MIN = 200, SIDE_MAX = 520, SIDE_HIDE = 160;   // px; released below SIDE_HIDE the list hides
+const sideW = w => document.documentElement.style.setProperty('--side-w', `${w}px`);
+if (+store('sideW')) sideW(clamp(+store('sideW'), SIDE_MIN, SIDE_MAX));
+const showSide = on => { document.body.classList.toggle('noside', !on); $('#sideBtn').classList.toggle('on', on); store('side', on ? '1' : '0'); };
+showSide(store('side') !== '0');
+$('#sideBtn').addEventListener('click', () => showSide(document.body.classList.contains('noside')));
+$('#sideHandle').addEventListener('mousedown', ev => {
+  ev.preventDefault();
+  const w0 = $('#side').offsetWidth, x0 = ev.clientX;
+  let w = w0;
+  document.body.classList.add('sizing');
+  const mv = e2 => { w = clamp(w0 + e2.clientX - x0, SIDE_HIDE - 40, SIDE_MAX); sideW(w); $('#side').classList.toggle('closing', w < SIDE_HIDE); };
+  const up = () => {
+    document.body.classList.remove('sizing'); $('#side').classList.remove('closing');
+    if (w < SIDE_HIDE) showSide(false); else store('sideW', Math.round(clamp(w, SIDE_MIN, SIDE_MAX)));
+    sideW(clamp(+store('sideW') || 360, SIDE_MIN, SIDE_MAX));
+    removeEventListener('mousemove', mv); removeEventListener('mouseup', up); };
+  addEventListener('mousemove', mv); addEventListener('mouseup', up);
+});
+
+// Text search runs server-side: the list only holds summaries, the lines stay on the server.
+let searchSeq = 0, searchTimer = null;
+function search() {
+  const q = $('#q').value.trim(), seq = ++searchSeq;
+  if (!q) { HITS = null; return applyFilter(); }
+  request(`/api/search?q=${encodeURIComponent(q)}`).then(r => r.json()).then(j => {
+    if (seq !== searchSeq) return;   // a newer query already went out
+    HITS = new Set(j.ids); applyFilter();
+  }).catch(err => { $('#count').textContent = err.message; });
+}
+$('#q').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(search, 250); });
+['#ds', '#splitSel', '#taskSel', '#sceneSel', '#levelSel', '#flagSel', '#sort', '#whoSel', '#qaSel'].forEach(s => $(s).addEventListener('input', applyFilter));
+$('#statsBody').addEventListener('click', ev => {   // a stats row selects that dataset / split
+  const r = ev.target.closest('tr.pick'); if (!r) return;
+  $('#ds').value = r.dataset.ds; $('#splitSel').value = r.dataset.split; applyFilter();
+  if (FILTERED.length && !FILTERED.includes(CUR)) open(FILTERED[0].id);
+});
+$('#qaStatsBody').addEventListener('click', ev => {
+  const r = ev.target.closest('tr.qa'); if (!r || ME?.role !== 'admin') return;
+  $('#whoSel').value = r.dataset.who; applyFilter();
+  if (FILTERED.length && !FILTERED.includes(CUR)) open(FILTERED[0].id);
+});
+
+const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+const num = x => Number(x).toLocaleString('en-US');
+const DATASETS = () => [...new Set(EPS.map(e => e.dataset))];
+const SPLITS = () => [...new Set(EPS.flatMap(e => e.split_memberships || [e.split]))].sort((a, b) => (SPLIT_ORDER.indexOf(a) + 1 || 9) - (SPLIT_ORDER.indexOf(b) + 1 || 9));
+// QA progress per assignee: a row filters the list to that person's episodes.
+function qaTable() {
+  const people = [...ROSTER.reviewers, ...ROSTER.admins].filter(n => EPS.some(e => e.assignee === n));
+  if (!people.length) return '';
+  const row = (n, eps, cls = '') => {
+    const corrected = eps.filter(e => e.qa === 'corrected'), unchanged = eps.filter(e => e.qa === 'confirmed');
+    const c = corrected.length, k = unchanged.length;
+    const h = eps.reduce((x, e) => x + e.duration, 0) / 3600;
+    const hours = reviewed => (reviewed.reduce((sum, e) => sum + e.duration, 0) / 3600).toFixed(2);
+    return `<tr class="${n ? 'qa' : ''} ${cls}" data-who="${esc(n)}" ${n ? 'title="show their episodes"' : ''}>
+      <td>${esc(n || 'all')}${ROSTER.admins.includes(n) ? ' (admin)' : ''}</td><td class="num">${num(eps.length)}</td><td class="num">${h.toFixed(1)} h</td>
+      <td class="num"><span class="light corrected"></span> ${num(c)}</td><td class="num">${hours(corrected)} h</td>
+      <td class="num"><span class="light confirmed"></span> ${num(k)}</td><td class="num">${hours(unchanged)} h</td>
+      <td class="num">${num(eps.length - c - k)}</td><td class="num">${eps.length ? Math.round(100 * (c + k) / eps.length) : 0}%</td></tr>`;
+  };
+  return `<table><thead><tr><th>QA reviewer</th><th>assigned</th><th>video</th><th>corrected</th><th>corrected hours</th><th>unchanged</th><th>unchanged hours</th>
+      <th>to do</th><th>done</th></tr></thead><tbody>${people.map(n => row(n, EPS.filter(e => e.assignee === n))).join('')}
+      ${row('', EPS.filter(e => e.assignee), 'all')}</tbody></table>`;
+}
+function renderQAStats() {
+  const admin = ME?.role === 'admin' && $('#login').hidden;
+  $('#qaStats').hidden = !admin;
+  $('#qaStatsBody').innerHTML = admin ? qaTable() : '';
+  if (!admin) $('#qaStats').open = false;
+}
+// Whole-dataset totals, independent of the list filters.
+function renderStats() {
+  const datasets = DATASETS(), splits = SPLITS(), rows = [];
+  for (const ds of datasets) {
+    for (const sp of splits) rows.push([ds, sp, EPS.filter(e => e.dataset === ds && (e.split_memberships || [e.split]).includes(sp)), '']);
+    rows.push([ds, '', EPS.filter(e => e.dataset === ds), 'tot']);
+  }
+  rows.push(['', '', EPS, 'all']);
+  const row = ([ds, sp, eps, cls]) => {
+    if (!eps.length) return '';
+    const cells = values => values.map(x => `<td class="num">${x == null ? '—' : x.toFixed(2)}</td>`).join('');
+    const captions = (countKey, durationKey) => {
+      const count = eps.reduce((n, e) => n + e[countKey], 0);
+      if (!count) return cells([null, null, null, null]);
+      const durations = eps.filter(e => e[countKey]).map(e => e[durationKey]);
+      return cells([durations.reduce((n, d) => n + d.total, 0) / count,
+                    Math.min(...durations.map(d => d.min)), Math.max(...durations.map(d => d.max)), count / eps.length]);
+    };
+    const durations = eps.map(e => e.duration);
+    return `<tr class="pick ${cls}" data-ds="${esc(ds)}" data-split="${esc(sp)}" title="show these">
+      <td>${esc(ds || 'all')}</td><td>${esc(sp || (ds ? 'all' : ''))}</td>
+      <td class="num">${num(eps.length)}</td>${cells([durations.reduce((n, d) => n + d, 0) / 3600, mean(durations), Math.min(...durations), Math.max(...durations)])}
+      ${captions('n_sub', 'sub_durations')}${captions('n_atomic', 'atomic_durations')}</tr>`;
+  };
+  $('#statsBody').innerHTML = `<table><thead><tr><th rowspan="2">dataset</th><th rowspan="2">split</th><th rowspan="2">episodes</th><th rowspan="2">video hours</th>
+      <th colspan="3">Episode duration (s)</th><th colspan="4">Subtask captions (L2)</th><th colspan="4">Atomic captions (L3.5)</th></tr>
+      <tr><th>mean (s)</th><th>min (s)</th><th>max (s)</th>
+      <th>mean (s)</th><th>min (s)</th><th>max (s)</th><th>avg # / episode</th>
+      <th>mean (s)</th><th>min (s)</th><th>max (s)</th><th>avg # / episode</th></tr></thead>
+      <tbody>${rows.map(row).join('')}</tbody></table>
+    <div class="note">Video hours sum episode durations; the final all row counts each episode once. Other durations are in seconds. Caption duration means use all captions at that level; average counts use all episodes,
+      including episodes without that level. Unavailable levels show —. Statistics cover the whole dataset, independent of list filters. Click a row to filter.</div>`;
+}
+window.addEventListener('beforeunload', ev => { if (EDIT?.dirty) { ev.preventDefault(); ev.returnValue = ''; } });
+window.addEventListener('hashchange', () => { const p = decodeURIComponent(location.hash.slice(1)); if (p && (!CUR || CUR.id !== p)) open(p, false); });
+
+request('/api/episodes').then(r => r.json()).then(j => {
+  EPS = j.episodes; ROSTER = j.roster;
+  EPS.forEach(e => byId.set(e.id, e));
+  $('#ds').innerHTML += DATASETS().map(x => `<option>${esc(x)}</option>`).join('');
+  $('#splitSel').innerHTML += SPLITS().map(x => `<option>${esc(x)}</option>`).join('');
+  const requested = new URLSearchParams(location.search);
+  for (const [key, id] of [['dataset', 'ds'], ['split', 'splitSel']]) {
+    if ([...$('#' + id).options].some(o => o.value === requested.get(key))) $('#' + id).value = requested.get(key);
+  }
+  fillFilters();
+  if ([...$('#taskSel').options].some(o => o.value === requested.get('task'))) $('#taskSel').value = requested.get('task');
+  renderStats();
+  if (AUTH) {
+    ME = j.user; showMe(); $('#whoSel').value = '';
+  } else {
+    // a stored login is re-checked (a server restart voids it); none yet -> the name picker
+    let saved = null; try { saved = JSON.parse(store('qa') || 'null'); } catch (err) { /* bad value: ask again */ }
+    if (saved?.token) {
+      showMe();
+      fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: saved.token }) })
+        .then(r => r.ok ? r.json().then(setMe) : askLogin('your login expired, pick your name again'));
+    } else { showMe(); if (ROSTER.reviewers.length || ROSTER.admins.length) askLogin(); }
+  }
+  applyFilter();
+  const p = decodeURIComponent(location.hash.slice(1));
+  if (p && byId.has(p)) open(p, false);
+  else if (FILTERED.length) open(FILTERED[0].id);
+  else $('#view').innerHTML = '<div class="empty">no episodes</div>';
+}).catch(err => { $('#view').textContent = err.message; });
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "source_repository": "VR-finetune-VLM",
+  "base_commit": "ad881fddf8c1ab25a3875eddcb7769e89b028198",
+  "source_state": "working tree including captioning_data integration and before/after changes",
+  "files": {
+    "server.py": "afdfdd6b6cc7e7d2994152bd91cc01aa6c05222580f61e6c52ef509952546340",
+    "index.html": "f60165208b9340dfb9cb5c364d5372546c74836a262149c1390d384dcf490fd8"
+  },
+  "dependencies": "Imported helpers remain in the VR-finetune-VLM deployment checkout; installer snapshots them privately."
+}

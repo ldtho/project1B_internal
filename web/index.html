@@ -15,6 +15,7 @@
     <div class="account"><span class="internal-label">Internal</span><span id="user-name" hidden></span><button id="logout" class="button ghost" hidden>Sign out</button></div>
   </header>
   <main>
+    <p id="account-notice" class="notice" role="status" hidden></p>
     <section id="login-view" class="login-layout">
       <div class="intro">
         <p class="eyebrow">FROM CAPTURE TO RESEARCH</p>
@@ -24,17 +25,21 @@
         <p class="quiet">Files depend on what the device captured and uploaded.</p>
       </div>
       <form id="login-form" class="login-card">
-        <span class="eyebrow">STAFF ACCESS</span>
+        <span class="eyebrow">PROJECT1B ACCESS</span>
         <h2>Welcome back</h2>
-        <p>Sign in with your existing Project1B staff account.</p>
+        <p>Sign in with your existing Project1B account.</p>
         <label for="identifier">Email, username, or phone</label>
         <input id="identifier" name="username" autocomplete="username" required maxlength="254" placeholder="Your account">
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required>
         <p id="login-error" class="error" role="alert" hidden></p>
         <button id="login-button" class="button primary" type="submit">Sign in</button>
-        <p class="login-note">This sample requires an account with admin access.</p>
+        <p class="login-note">All accounts can review captioning_data. Recording downloads require admin access.</p>
       </form>
+    </section>
+    <section id="datasets-view" class="page-heading" hidden>
+      <div><p class="eyebrow">CAPTION REVIEW</p><h2>captioning_data</h2><p>Browse training, validation, and test samples. Review captions and save corrections.</p></div>
+      <a class="button primary" href="/captioning_data/">Open captioning_data</a>
     </section>
     <section id="library-view" hidden>
       <div class="page-heading"><div><p class="eyebrow">YOUR DATA WORKSPACE</p><h1>Recording library</h1><p>Browse captures. Download the full original upload.</p></div><button id="refresh" class="button secondary">Refresh library</button></div>

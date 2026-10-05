@@ -7,6 +7,23 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+datasets_root=${DATASETS_REPO:-$(dirname "$repo")}
+datasets_python=${DATASETS_PYTHON:-$(command -v python3)}
+datasets_user=${DATASETS_USER:-${SUDO_USER:-tho2}}
+datasets_state=/var/lib/project1b-datasets
+service=/etc/systemd/system/project1b-datasets.service
+if [[ ! -f $datasets_root/data/splits/train.jsonl ]]; then
+    echo "Set DATASETS_REPO to the VR-finetune-VLM checkout containing data/splits and viewer helpers." >&2
+    exit 1
+fi
+for path in "$datasets_root" "$datasets_python"; do
+    if [[ $path != /* || $path == *[\"%]* || $path == *$'\n'* ]]; then
+        echo "Dataset paths must be absolute and contain no quote, percent, or newline." >&2
+        exit 1
+    fi
+done
+id "$datasets_user" >/dev/null
+DATASETS_REPO="$datasets_root" "$datasets_python" "$repo/datasets_server.py" --help >/dev/null
 domain=internal.project1b.space
 available=/etc/nginx/sites-available/$domain
 enabled=/etc/nginx/sites-enabled/$domain
@@ -16,6 +33,20 @@ backup=$(mktemp -d)
 had_config=false
 had_enabled=false
 old_release=$(readlink "$base/current" || true)
+had_service=false
+service_enabled=false
+service_active=false
+if [[ -e $service ]]; then
+    if ! grep -q '^# Project1B dataset viewer' "$service"; then
+        echo "Existing $service is not owned by this project; leaving it untouched." >&2
+        rmdir "$backup"
+        exit 1
+    fi
+    cp -a "$service" "$backup/service"
+    had_service=true
+fi
+if systemctl is-enabled --quiet project1b-datasets.service; then service_enabled=true; fi
+if systemctl is-active --quiet project1b-datasets.service; then service_active=true; fi
 
 if [[ -e $available ]] && ! grep -q '^# Project1B internal recording library' "$available"; then
     echo "Existing $available is not owned by this project; leaving it untouched." >&2
@@ -40,6 +71,11 @@ rollback() {
     else
         rm -f "$base/current"
     fi
+    systemctl stop project1b-datasets.service
+    if $had_service; then cp -a "$backup/service" "$service"; else rm -f "$service"; fi
+    if ! $service_enabled; then systemctl disable project1b-datasets.service; fi
+    systemctl daemon-reload
+    if $service_active; then systemctl start project1b-datasets.service; fi
     nginx -t && systemctl reload nginx
     echo "Deployment failed; previous internal site configuration restored." >&2
     exit 1
@@ -51,6 +87,78 @@ install -d -m 755 "$release" /var/www/letsencrypt
 for asset in index.html styles.css app.js favicon.svg; do
     install -m 644 "$repo/web/$asset" "$release/$asset"
 done
+install -d -m 755 "$release/web"
+install -m 644 "$repo/web/datasets-auth.js" "$release/web/datasets-auth.js"
+install -m 644 "$repo/datasets_server.py" "$release/datasets_server.py"
+install -d -m 755 "$release/viewer"
+install -m 644 "$repo/viewer/server.py" "$release/viewer/server.py"
+install -m 644 "$repo/viewer/index.html" "$release/viewer/index.html"
+# Snapshot only the viewer's imported local modules; rollback restores the same code and UI.
+"$datasets_python" - "$datasets_root" "$release/service" <<'PYTHON'
+import shutil
+import sys
+from pathlib import Path
+source, target = map(Path, sys.argv[1:])
+source = source.resolve()
+sys.path.insert(0, str(source))
+from data_prep.viz.datasets import server
+files = set()
+for module in tuple(sys.modules.values()):
+    if file := getattr(module, '__file__', None):
+        file = Path(file).resolve()
+        if file.is_file() and file.is_relative_to(source):
+            files.add(file)
+files.add(server.UI)
+for file in files:
+    out = target / file.relative_to(source)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(file, out)
+PYTHON
+install -d -m 700 -o "$datasets_user" "$datasets_state"
+if [[ ! -e $datasets_state/annotation_edits.jsonl ]]; then
+    initial_edits=$datasets_root/data/annotation_edits.jsonl
+    if [[ ! -f $initial_edits ]]; then initial_edits=/dev/null; fi
+    install -m 600 -o "$datasets_user" "$initial_edits" "$datasets_state/annotation_edits.jsonl"
+fi
+cat > "$service" <<UNIT
+# Project1B dataset viewer — managed by project1B_internal/deploy/install.sh.
+[Unit]
+Description=Project1B authenticated dataset viewer
+After=network.target
+
+[Service]
+User=$datasets_user
+Environment="DATASETS_REPO=$release/service"
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart="$datasets_python" "$release/datasets_server.py" --data-root "$datasets_root" --edits "$datasets_state/annotation_edits.jsonl"
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=$datasets_state
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable project1b-datasets.service
+systemctl restart project1b-datasets.service
+dataset_ready=false
+for attempt in {1..30}; do
+    if curl --noproxy '*' --fail --silent --connect-timeout 1 --max-time 2 \
+        http://127.0.0.1:8325/healthz -o "$backup/datasets-health.json"; then
+        dataset_ready=true
+        break
+    fi
+    sleep 1
+done
+if ! $dataset_ready; then
+    journalctl -u project1b-datasets.service -n 15 --no-pager >&2
+    false
+fi
 
 # Give ACME its own hostname before obtaining the separate certificate.
 if [[ ! -f /etc/letsencrypt/live/$domain/fullchain.pem ]]; then
@@ -108,3 +216,4 @@ if ! $ready; then
 fi
 trap - ERR
 echo "DEPLOYED https://$domain/"
+echo "CAPTIONING_DATA https://$domain/captioning_data/"
