@@ -301,7 +301,7 @@ Ask reviewers to save drafts before restart, then refresh their browsers. Assign
 3. Edit caption text and cue timing. Use the existing add/remove controls where needed.
 4. Inspect **Before / after** beside the video (below it on narrow screens). It opens by default and scrolls independently on wide screens; its summary or the **Before / after** button collapses it. Default comparison is original versus current saved captions or unsaved draft.
 5. Inspect removed words, added words, timing changes, and added/removed cues. **Show unchanged captions** includes the untouched parts. Timestamp buttons seek the video to either version's cue.
-6. Click **Save** and wait for success. Reload to confirm the correction persisted.
+6. Click **Save** and wait for success. The next episode in the current filtered list opens automatically; saving the last episode stays there. Failed saves keep the current episode and draft. Saved revisions remain available when you reopen the episode.
 
 Keyboard shortcuts (outside text/time fields): **Space** pauses/resumes video. In Edit mode, **E** trims the caption at the playhead to end there; **P** extends the preceding caption to the playhead, moving the current caption's start when needed to prevent overlap. Both use the current caption's level, keep at least 0.1 s per caption, and support **Ctrl/Cmd+Z** undo. **C** splits a caption into two. **E** follows the **move shared boundaries** setting; **P** moves the next start whenever needed. Changes remain drafts until saved.
 
@@ -433,6 +433,7 @@ Mock authentication uses `.preview/mock.sqlite3`; corrections use `.preview/edit
 From this repository:
 
 ```bash
+node tests/save-navigation.cjs
 DATASETS_REPO=/home/tho2/VR-finetune-VLM python3 -B tests/storage.py
 
 npm install --prefix /tmp/project1b-qa playwright

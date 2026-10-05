@@ -1118,8 +1118,9 @@ function renderView(e, d, t0, sel0) {
       if (!r.ok) throw new Error(j.error || r.statusText);
       return j;
     });
-  const done = j => {
-    EDIT = null;
+  const done = (j, next = []) => {
+    const current = CUR === e;
+    if (current) EDIT = null;
     DETAIL.set(e.id, Promise.resolve(j));
     Object.assign(e, { instruction: j.instruction, n_sub: j.subtasks.length, n_atomic: j.atomic.length,
                        sub_durations: j.sub_durations, atomic_durations: j.atomic_durations,
@@ -1128,13 +1129,18 @@ function renderView(e, d, t0, sel0) {
     applyFilter();
     renderStats();
     renderQAStats();
-    renderView(e, j, v.currentTime, SEL);
+    if (!current) return;
+    const upcoming = next.find(episode => FILTERED.includes(episode));
+    if (upcoming) open(upcoming.id);
+    else renderView(e, j, v.currentTime, SEL);
   };
   const save = () => {
+    if (!EDIT || $('#edSave').disabled) return;
     if (!canSave(e)) return msg($('#edSave').title, true);
+    const index = FILTERED.indexOf(e), next = index < 0 ? [] : FILTERED.slice(index + 1);
     msg('saving …'); $('#edSave').disabled = true;
     post('/api/edit', { ...(!AUTH && { token: ME.token }), id: e.id, version: EDIT.version, instruction: EDIT.ins, subtasks: EDIT.subs, atomic: EDIT.atoms })
-      .then(done, err => { msg(err.message, true); $('#edSave').disabled = false; });
+      .then(j => done(j, next), err => { if (CUR === e) { msg(err.message, true); $('#edSave').disabled = false; } });
   };
 
   // one edit op on line k of level l ('subs' | 'atoms'); the row buttons and the keys both land here
