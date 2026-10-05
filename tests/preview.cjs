@@ -99,13 +99,21 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     };
     return { video: rect('#videos'), comparison: rect('#captionCompare') };
   });
-  assert.equal(await page.locator('#captionCompare').evaluate(element => element.open), true);
+  assert.equal(await page.locator('#captionCompare').isVisible(), true);
+  assert.equal(await page.locator('#captionCompare > summary').count(), 0);
+  assert.equal(await page.locator('#compareBtn').getAttribute('aria-expanded'), 'true');
   const wide = await mediaLayout();
   assert.ok(wide.comparison.x >= wide.video.right + 10);
   assert.ok(Math.abs(wide.comparison.y - wide.video.y) < 1);
-  await page.locator('#captionCompare > summary').click();
+  await page.locator('#compareBtn').click();
+  assert.equal(await page.locator('#captionCompare').isHidden(), true);
+  assert.equal(await page.locator('#compareBtn').getAttribute('aria-expanded'), 'false');
   assert.ok((await mediaLayout()).video.width > wide.video.width);
-  await page.locator('#captionCompare > summary').click();
+  await page.evaluate(initial => { EDIT = null; renderView(CUR, initial, 0); }, initial);
+  assert.equal(await page.locator('#captionCompare').isHidden(), true);
+  await page.locator('#compareBtn').click();
+  assert.equal(await page.locator('#compareBtn').getAttribute('aria-expanded'), 'true');
+  await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
   await page.setViewportSize({ width: 1000, height: 720 });
   const narrow = await mediaLayout();
   assert.ok(narrow.comparison.y >= narrow.video.bottom + 10);
@@ -380,7 +388,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.locator('#annotationToggle').check();
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
   await page.evaluate(() => document.querySelector('video').pause());
-  if (!(await page.locator('#captionCompare').evaluate(element => element.open))) await page.locator('#compareBtn').click();
+  if (await page.locator('#captionCompare').isHidden()) await page.locator('#compareBtn').click();
   const pairs = await page.evaluate(() => captionPairs(
     [{ start: 0, end: 1, text: 'A' }, { start: 1, end: 2, text: 'B' }],
     [{ start: 0, end: 1, text: 'A' }, { start: 1, end: 1.2, text: 'Added' }, { start: 1.2, end: 2, text: 'B' }]

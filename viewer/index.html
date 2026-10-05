@@ -311,11 +311,11 @@
   .review-media { display:grid; gap:12px; align-items:start; margin-bottom:12px; }
   .review-media > .compare { margin:0; min-width:0; }
   @container (min-width:760px) {
-    .review-media:has(.compare[open]) { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
-    .review-media > .compare[open] { max-height:58vh; overflow:auto; }
+    .review-media:has(.compare:not([hidden])) { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+    .review-media > .compare:not([hidden]) { max-height:58vh; overflow:auto; }
   }
-  .compare > summary { padding:12px; cursor:pointer; font-weight:650; }
-  .compare > summary span { margin-left:8px; color:var(--muted); font-weight:400; }
+  .compare > h3 { margin:0; padding:12px; font-size:inherit; font-weight:650; }
+  .compare > h3 span { margin-left:8px; color:var(--muted); font-weight:400; }
   .cmp-controls { display:flex; flex-wrap:wrap; align-items:end; gap:12px; padding:0 12px 12px; }
   .cmp-controls label { display:flex; flex-direction:column; gap:5px; min-width:0; max-width:100%; }
   .cmp-controls label:last-child { flex-direction:row; align-items:center; padding-bottom:5px; }
@@ -760,7 +760,7 @@ const step = d => { const i = FILTERED.indexOf(CUR); if (FILTERED[i + d]) open(F
 const random = () => { if (FILTERED.length) open(FILTERED[Math.floor(Math.random() * FILTERED.length)].id); };
 
 function renderView(e, d, t0, sel0) {
-  const comparisonOpen = t0 !== undefined ? ($('#captionCompare')?.open ?? true) : true;
+  const comparisonOpen = t0 !== undefined ? !($('#captionCompare')?.hidden ?? false) : true;
   const i = FILTERED.indexOf(e), hasSub = d.subtasks.length > 0;
   const q = `p=${encodeURIComponent(e.id)}`;
   const dur = e.duration || Math.max(1, ...d.atomic.map(a => a.end));
@@ -804,15 +804,15 @@ function renderView(e, d, t0, sel0) {
         <track kind="subtitles" label="sub-task + atomic" srclang="en" default></video>
       <div id="ovl" tabindex="0" role="group" aria-label="Video captions: drag or use arrow keys to move; Home resets"
         aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home" title="Drag captions to move · double-click to reset"><div class="s hide" id="ovlSub"></div><div class="a hide" id="ovlAtom"></div></div></div></div>
-    <details id="captionCompare" class="compare" ${comparisonOpen ? 'open' : ''}>
-      <summary>Before / after <span id="cmpCount"></span></summary>
+    <section id="captionCompare" class="compare" aria-labelledby="cmpTitle" ${comparisonOpen ? '' : 'hidden'}>
+      <h3 id="cmpTitle">Before / after <span id="cmpCount"></span></h3>
       <div class="cmp-controls">
         <label>Before<select id="cmpBefore" aria-label="Before version"></select></label>
         <label>After<select id="cmpAfter" aria-label="After version"></select></label>
         <label><input type="checkbox" id="cmpUnchanged">Show unchanged captions</label>
       </div>
       <p class="cmp-meta" id="cmpMeta"></p><div class="cmp-content" id="cmpContent"></div>
-    </details></div>
+    </section></div>
     <div class="tlbar">
       ${canSave(e) ? `<label class="switch" title="edit mode: correct the times and text (on by default, remembered in this browser)"><input type="checkbox" id="edMode" ${EDITON ? 'checked' : ''}><i></i>Edit mode</label>
       <button id="reset" title="restore original captions; saved versions stay in history">↺ reset</button>`
@@ -919,13 +919,13 @@ function renderView(e, d, t0, sel0) {
     if (button) { v.currentTime = +button.dataset.t; v.play().catch(() => {}); v.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
   });
   const comparison = $('#captionCompare');
-  comparison.addEventListener('toggle', () => {
-    $('#compareBtn').setAttribute('aria-expanded', String(comparison.open));
-    if (comparison.open && matchMedia('(max-width:700px)').matches) showSide(false);
-  });
   $('#compareBtn').addEventListener('click', () => {
-    comparison.open = !comparison.open;
-    if (comparison.open) $('.review-media').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    comparison.hidden = !comparison.hidden;
+    $('#compareBtn').setAttribute('aria-expanded', String(!comparison.hidden));
+    if (!comparison.hidden) {
+      if (matchMedia('(max-width:700px)').matches) showSide(false);
+      $('.review-media').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
   });
   v.playbackRate = RATE;
   if (t0) v.addEventListener('loadedmetadata', () => { v.currentTime = t0; }, { once: true });
