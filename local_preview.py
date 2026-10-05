@@ -223,7 +223,7 @@ def main():
                 'ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;': '',
                 'add_header Strict-Transport-Security "max-age=86400" always;': '',
                 '/var/www/project1b-internal/current': str(web),
-                '127.0.0.1:8903': f'127.0.0.1:{api.server_port}', '127.0.0.1:8325': f'127.0.0.1:{viewer.server_port}',
+                '127.0.0.1:8903': f'127.0.0.1:{api.server_port}', '127.0.0.1:8326': f'127.0.0.1:{viewer.server_port}',
             }
             for old, new in replacements.items():
                 site = site.replace(old, new)

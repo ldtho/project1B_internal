@@ -61,6 +61,85 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   const media = await context.request.get(`${base}/captioning_data/video?p=${encodeURIComponent(id)}`, { headers: { Range: 'bytes=0-31' } });
   assert.equal(media.status(), 206); assert.equal((await media.body()).length, 32);
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0, null, { timeout: 30000 });
+  const duration = initial.duration;
+  const fixture = { ...initial, instruction: 'Instruction fixture',
+    subtasks: [{ i: 0, start: 0, end: duration * 0.75, desc: 'Subtask fixture' }],
+    atomic: [{ start: 0, end: duration * 0.25, text: '[both hands] First action' },
+      { start: duration * 0.375, end: duration * 0.5, text: '[both hands] Second action' }] };
+  await page.evaluate(fixture => renderView(CUR, fixture, 0), fixture);
+  await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
+  const seek = async time => page.evaluate(time => {
+    const video = document.querySelector('video'); video.pause(); video.currentTime = time;
+    video.dispatchEvent(new Event('timeupdate'));
+  }, time);
+  const synchronized = async (level, index, text) => {
+    assert.equal(await page.locator('#selIn').inputValue(), text);
+    assert.equal(await page.locator(`#levels tr[data-l="${level}"][data-k="${index}"] input.tx`).inputValue(), text);
+    assert.ok((await page.locator(`#lane${level === 'atoms' ? 'Atom' : 'Sub'} [data-${level === 'atoms' ? 'atom' : 'sub'}="${index}"]`).getAttribute('title')).includes(text));
+    assert.ok((await page.locator(level === 'atoms' ? '#ovlAtom' : '#ovlSub').innerText()).includes(text.replace('[both hands] ', '')));
+    assert.ok(await page.evaluate(text => [...document.querySelector('video').textTracks[0].cues].some(cue => cue.text === text), text));
+  };
+  await seek(duration * 0.1);
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] First action');
+  const atomicInput = page.locator('#levels tr[data-l="atoms"][data-k="0"] input.tx');
+  await atomicInput.fill('[both hands] Edited in table');
+  await synchronized('atoms', 0, '[both hands] Edited in table');
+  await page.locator('#selIn').fill('[both hands] Edited in selected annotation');
+  await page.locator('#selIn').pressSequentially(' live');
+  await synchronized('atoms', 0, '[both hands] Edited in selected annotation live');
+  await page.locator('#laneAtom [data-atom="0"]').dblclick();
+  await page.locator('.tled').fill('[both hands] Edited on timeline');
+  assert.equal(await page.locator('.tled').evaluate(input => input === document.activeElement), true);
+  await synchronized('atoms', 0, '[both hands] Edited on timeline');
+  await page.locator('.tled').press('Escape');
+  await synchronized('atoms', 0, '[both hands] Edited in selected annotation live');
+  await page.locator('#laneAtom [data-atom="0"]').dblclick();
+  await page.locator('.tled').fill('[both hands] Timeline commit');
+  await page.locator('.tled').press('Enter');
+  await synchronized('atoms', 0, '[both hands] Timeline commit');
+  await seek(duration * 0.25);
+  assert.equal(await page.locator('#selIn').inputValue(), 'Subtask fixture');
+  await page.locator('#selIn').fill('Edited fallback subtask');
+  await synchronized('subs', 0, 'Edited fallback subtask');
+  await seek(duration * 0.375);
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Second action');
+  await seek(duration * 0.1);
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Timeline commit');
+  await seek(duration * 0.2);
+  await page.evaluate(() => document.querySelector('video').play());
+  await page.waitForFunction(() => document.querySelector('#selIn')?.value === 'Edited fallback subtask');
+  await page.evaluate(() => document.querySelector('video').pause());
+  await seek(duration * 0.875);
+  assert.equal(await page.locator('#selIn').inputValue(), 'Instruction fixture');
+  await page.locator('#selIn').fill('Edited fallback instruction');
+  assert.equal(await page.locator('#levels input[data-l="ins"]').inputValue(), 'Edited fallback instruction');
+  assert.equal(await page.locator('#laneIns').innerText(), 'Edited fallback instruction');
+  assert.equal(await page.locator('#ovlSub').innerText(), 'Edited fallback instruction');
+  assert.ok(await page.evaluate(() => [...document.querySelector('video').textTracks[0].cues].some(cue => cue.text === 'Edited fallback instruction')));
+  await page.locator('#annotationToggle').uncheck();
+  assert.equal(await page.locator('#selbox').isHidden(), true);
+  await seek(duration * 0.4);
+  assert.equal(await page.locator('#ovlAtom').isVisible(), true);
+  await page.locator('#annotationToggle').check();
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Second action');
+  await seek(duration * 0.23);
+  const movedEnd = page.locator('#levels tr[data-l="atoms"][data-k="0"] input[data-f="end"]');
+  await movedEnd.fill(String(duration * 0.2)); await movedEnd.dispatchEvent('change');
+  assert.equal(await page.locator('#selIn').inputValue(), 'Edited fallback subtask');
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('.tlbar label.switch').click();
+  await seek(duration * 0.4);
+  assert.match(await page.locator('#selTx').innerText(), /Second action/);
+  await seek(duration * 0.3);
+  assert.equal(await page.locator('#selTx').innerText(), 'Subtask fixture');
+  await page.locator('.tlbar label.switch').click();
+  await page.locator('#annotationToggle').uncheck();
+  await page.evaluate(initial => { EDIT = null; renderView(CUR, initial, 0); }, initial);
+  assert.equal(await page.locator('#annotationToggle').isChecked(), false);
+  assert.equal(await page.locator('#selbox').isHidden(), true);
+  await page.locator('#annotationToggle').check();
+  await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
+  await page.evaluate(() => document.querySelector('video').pause());
   if (!(await page.locator('#captionCompare').evaluate(element => element.open))) await page.locator('#compareBtn').click();
   const pairs = await page.evaluate(() => captionPairs(
     [{ start: 0, end: 1, text: 'A' }, { start: 1, end: 2, text: 'B' }],
@@ -136,7 +215,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     assert.equal((await context.request.get(`${base}/api/admin/videos`)).status(), 403);
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: mock login/roles; real video; isolated corrections; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
+  console.log('PASS: mock login/roles; real video; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   try { if (restoreCaptions) await restoreCaptions(); }
   catch (error) { console.error(error); process.exitCode = 1; }

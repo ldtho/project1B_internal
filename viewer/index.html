@@ -108,12 +108,12 @@
   .selrow.par { display:flex; gap:10px; align-items:center; background:#f7f8fa; border-bottom:1px solid var(--line); font-size:13px; color:#4b5563; }
   .selrow.par.ins { border-left-color:var(--ins); } .selrow.par.sub { border-left-color:var(--sub); }
   .selrow.me { padding-top:7px; padding-bottom:9px; }
-  .selrow.me.sub { border-left-color:var(--sub); } .selrow.me.atom { border-left-color:var(--atom); }
+  .selrow.me.ins { border-left-color:var(--ins); } .selrow.me.sub { border-left-color:var(--sub); } .selrow.me.atom { border-left-color:var(--atom); }
   .selrow .ptx { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .selrow .flg { flex:none; color:var(--bad); font-size:12px; font-weight:600; }
   .chip { flex:none; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:3px; white-space:nowrap; }
   .par .chip.ins { background:var(--ins-bg); color:var(--ins); } .par .chip.sub { background:var(--sub-bg); color:var(--sub); }
-  .me .chip.sub { background:var(--sub); color:#fff; } .me .chip.atom { background:var(--atom); color:#fff; }
+  .me .chip.ins { background:var(--ins); color:#fff; } .me .chip.sub { background:var(--sub); color:#fff; } .me .chip.atom { background:var(--atom); color:#fff; }
   .selrow .t { flex:none; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
   .selhd { display:flex; gap:10px; align-items:center; margin-bottom:6px; }
   .selhd .sp { flex:1; }
@@ -381,8 +381,9 @@
       The size is remembered across episodes and reloads; fullscreen uses the full screen.</li>
     <li>The timeline has one lane per level: 1 instruction, 2 sub-task (where available), 3 atomic. Click a caption to select it and jump to its
       start; click or drag the ruler to scrub; − / fit / + (left of the ruler) zoom, down to 0.1 s ticks.</li>
-    <li>The selected caption shows above the timeline under its parent, with Qwen's check note (original → suggested) when it or its
-      parent was flagged. The table below lists every caption, atomic lines under their sub-task.</li>
+    <li>The selected annotation follows the playhead: atomic caption, then sub-task, then instruction when timed captions are absent.
+      Use <b>selected annotation</b> above the video to show or hide this area. Edits update it, the timeline, and video captions together.
+      Qwen's check notes show flagged captions; the table below lists every caption under its sub-task.</li>
   </ul>
   <h4>Filters and flags</h4>
   <ul>
@@ -542,6 +543,7 @@ let EDIT = null;                          // the working copy while the edit mod
 let LINK = store('link') === '1';         // opt-in: a moved start/end drags the line that shared it
 let MAGNET = store('magnet') !== '0';
 let EDITON = store('edmode') !== '0';     // edit mode switch, on by default     // a dragged edge near the playhead lands on it
+let ANNOTATIONON = store('selected-annotation') !== '0';
 let Z = 1, RO = null;                     // timeline zoom; the observer that redraws its ruler
 let EDITKEY = null;                       // the open episode's edit-mode key handler (set by renderView)
 const grid = t => Math.round(t * 10) / 10;
@@ -758,12 +760,13 @@ function renderView(e, d, t0, sel0) {
       ${hasSub ? ` (<b>${(d.atomic.length / d.subtasks.length).toFixed(1)}</b> per sub-task)` : ''} · <code>${esc(d.source)}</code></div>
     ${episodeMetadata(d)}
     <div class="cams"><label><input type="checkbox" id="cc" checked> captions on video</label>
+      <label><input type="checkbox" id="annotationToggle" aria-controls="selbox" ${ANNOTATIONON ? 'checked' : ''}> selected annotation</label>
       <button id="fs">⛶ fullscreen</button>
       <label class="videoSize">video size <input type="range" id="videoSize" min="25" max="100" step="5" value="${VIDEO_SIZE}"
         aria-label="Displayed video size" aria-valuetext="${VIDEO_SIZE}%"><output id="videoSizeValue" for="videoSize">${VIDEO_SIZE}%</output></label><span class="sp"></span>
       <label>speed <select id="rate">${[0.5, 1, 1.5, 2, 4].map(x => `<option ${x === RATE ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
     <div id="videos" style="width:${VIDEO_SIZE}%; --video-scale:${VIDEO_SIZE / 100}"><div id="stage"><video controls preload="metadata" src="${mediaBase}/video?${q}">
-        <track kind="subtitles" label="sub-task + atomic" srclang="en" default src="${mediaBase}/vtt?${q}&v=${d.version}"></video>
+        <track kind="subtitles" label="sub-task + atomic" srclang="en" default></video>
       <div id="ovl"><div class="s hide" id="ovlSub"></div><div class="a hide" id="ovlAtom"></div></div></div></div>
     <div class="tlbar">
       ${canSave(e) ? `<label class="switch" title="edit mode: correct the times and text (on by default, remembered in this browser)"><input type="checkbox" id="edMode" ${EDITON ? 'checked' : ''}><i></i>Edit mode</label>
@@ -775,7 +778,7 @@ function renderView(e, d, t0, sel0) {
         <label title="a dragged edge that comes near the playhead lands on it"><input type="checkbox" id="magnet" ${MAGNET ? 'checked' : ''}> magnet</label>
         <span id="edmsg"></span></span><span class="sp"></span>
       <span class="edonly"><button id="edDiscard" title="drop the unsaved changes">discard</button><button id="edSave" class="pri" title="save (Ctrl+S)">save</button></span></div>
-    <div class="selbox" id="selbox"></div>
+    <div class="selbox" id="selbox" ${ANNOTATIONON ? '' : 'hidden'}></div>
     <div class="tlrow"><div class="tlgut"><span class="zoom"><button id="zOut" title="zoom out">−</button><button id="zFit" title="fit the whole episode">fit</button><button id="zIn" title="zoom in">+</button></span><span class="ins">1 instruction</span><span class="sub">2 sub-task</span><span class="atom">3 atomic</span></div>
     <div class="tlwrap"><div class="tlc"><div class="ruler"></div><div class="tl">
       <div class="lane ins" id="laneIns"></div>
@@ -873,26 +876,40 @@ function renderView(e, d, t0, sel0) {
   });
   v.playbackRate = RATE;
   if (t0) v.addEventListener('loadedmetadata', () => { v.currentTime = t0; }, { once: true });
-  let lastSub = -2, lastAtom = -2;
-  const follow = () => {
-    const t = v.currentTime, { subs, atoms } = lv();
+  let lastSub = -2, lastAtom = -2, PLAY = null;
+  const follow = (force = false) => {
+    const t = v.currentTime, { ins, subs, atoms } = lv();
     $('.tlwrap .head').style.left = `${100 * t / dur}%`;
     const si = subs.findIndex(s => t >= s.start && t < s.end);
     const ai = atoms.findIndex(a => t >= a.start && t < a.end);
-    if (si !== lastSub) {
-      lastSub = si;
+    const active = ai >= 0 ? { l: 'atoms', k: ai } : si >= 0 ? { l: 'subs', k: si } : ins ? { l: 'ins', k: 0 } : null;
+    const switched = active?.l !== PLAY?.l || active?.k !== PLAY?.k;
+    if (switched && active && active.l !== 'ins') SEL = active;
+    PLAY = active;
+    if (si !== lastSub || ai !== lastAtom || switched || force === true) {
+      lastSub = si; lastAtom = ai;
       document.querySelectorAll('[data-sub]').forEach(el => el.classList.toggle('active', +el.dataset.sub === si));
-      const s = subs[si];
-      $('#ovlSub').innerHTML = s ? decisionBadge(s) + esc(s.desc) : '';
-      $('#ovlSub').classList.toggle('hide', !s);
-    }
-    if (ai !== lastAtom) {
-      lastAtom = ai;
       document.querySelectorAll('[data-atom]').forEach(el => el.classList.toggle('active', +el.dataset.atom === ai));
-      const a = atoms[ai];
+      const s = subs[si], a = atoms[ai];
+      $('#ovlSub').innerHTML = s ? decisionBadge(s) + esc(s.desc) : !a ? esc(ins) : '';
+      $('#ovlSub').classList.toggle('hide', !s && (!!a || !ins));
       $('#ovlAtom').innerHTML = a ? decisionBadge(a) + hands(a.text) : '';
       $('#ovlAtom').classList.toggle('hide', !a);
+      markSel();
     }
+  };
+  const syncTrack = () => {
+    const track = $('video track').track, { ins, subs, atoms } = lv();
+    while (track.cues?.length) track.removeCue(track.cues[0]);
+    for (const s of subs) if (s.end > s.start) track.addCue(new VTTCue(s.start, s.end, s.desc));
+    for (const a of atoms) if (a.end > a.start) track.addCue(new VTTCue(a.start, a.end, a.text));
+    let end = 0;
+    for (const cue of [...subs, ...atoms].sort((a, b) => a.start - b.start)) {
+      const start = clamp(cue.start, 0, dur);
+      if (ins && start > end) track.addCue(new VTTCue(end, start, ins));
+      end = Math.max(end, Math.min(cue.end, dur));
+    }
+    if (ins && end < dur) track.addCue(new VTTCue(end, dur, ins));
   };
   const drawLanes = () => {
     const { ins, subs, atoms } = lv(), grip = EDIT ? '<i class="hl"></i><i class="hr"></i>' : '';
@@ -904,15 +921,15 @@ function renderView(e, d, t0, sel0) {
     $('#laneAtom').innerHTML = atoms.map((a, k) => `<div class="seg ${esc(a.selection_status || '')}${a.fallback ? ' fb' : ''}" data-atom="${k}"
         style="left:${100 * a.start / dur}%;width:${100 * (a.end - a.start) / dur}%"
         title="${fmt(a.start)}–${fmt(a.end)}: ${esc(a.text)} · ${esc(a.selection_status || '')} ${esc((a.discard_reason || '').replaceAll('_', ' '))}">${esc(a.text.replace(/\[[a-z ]+\] ?/g, ''))}${grip}</div>`).join('');
+    syncTrack();
     lastSub = lastAtom = -2;
     follow();
     markSel();
   };
-  // The selected line {l: 'subs' | 'atoms', k}: outlined on the timeline and in the table, shown with its parent
-  // in #selbox, and what the edit keys act on.
+  // Manual selection controls edit shortcuts; the caption card follows the lowest level at the playhead.
   let SEL = sel0 || null;
   const cur = () => SEL && lv()[SEL.l][SEL.k] ? SEL : null;
-  const lineName = (l, k) => `${l === 'subs' ? 'sub-task' : 'atomic line'} ${k + 1}`;
+  const lineName = (l, k) => l === 'ins' ? 'instruction' : `${l === 'subs' ? 'sub-task' : 'atomic line'} ${k + 1}`;
   const markSel = () => {
     const s = cur();
     document.querySelectorAll('#view [data-sub], #view [data-atom]').forEach(el => {
@@ -926,48 +943,52 @@ function renderView(e, d, t0, sel0) {
   const ownerOf = (subs, a) => { let best = -1, ov = 0;
     subs.forEach((s, j) => { const o = Math.min(a.end, s.end) - Math.max(a.start, s.start); if (o > ov) { ov = o; best = j; } });
     return best; };
-  // #selbox: the parent line (an atomic line's sub-task, else the instruction) over the selected one. In edit mode the
-  // selected text is an input with the Add / Merge / Delete buttons; the skeleton is rebuilt only when the selection or
+  // #selbox: the current caption under its parent. In edit mode its text is an input with Add / Merge / Delete
+  // buttons; the skeleton is rebuilt only when the playhead caption or
   // the mode changes, so typing in it survives the redraws its own keystrokes cause.
   let selKey = '';
   const drawSel = () => {
-    const box = $('#selbox'), s = cur(), L = lv();
+    const box = $('#selbox'), s = PLAY, L = lv();
     const key = s ? `${EDIT ? 'e' : 'v'}:${s.l}:${s.k}` : EDIT ? 'e' : 'v';
     if (key !== selKey) {
       selKey = key;
-      const lvl = s && (s.l === 'subs' ? 'sub' : 'atom');
-      box.innerHTML = !s ? `<div class="hint">Click a caption on the timeline or in the table to select it${EDIT ? ' and edit it here' : ''}.</div>`
-        : `<div class="selcard"><div class="selrow par" id="selP"><span class="chip" id="selPl"></span><span class="t" id="selPt"></span>
-             <span class="ptx" id="selPx"></span><span class="flg" id="selPf"></span></div>
+      const lvl = s && (s.l === 'ins' ? 'ins' : s.l === 'subs' ? 'sub' : 'atom');
+      box.innerHTML = !s ? '<div class="hint">No caption at the playhead.</div>'
+        : `<div class="selcard">${s.l === 'ins' ? '' : `<div class="selrow par" id="selP"><span class="chip" id="selPl"></span><span class="t" id="selPt"></span>
+             <span class="ptx" id="selPx"></span><span class="flg" id="selPf"></span></div>`}
            <div class="selrow me ${lvl}">
              <div class="selhd"><span class="chip ${lvl}">${lineName(s.l, s.k)}</span><span class="t" id="selT"></span>${EDIT ? `<span class="sp"></span>
-               <button class="act" data-op="add" id="selAdd">+ Add caption</button>
+               ${s.l === 'ins' ? '' : `<button class="act" data-op="add" id="selAdd">+ Add caption</button>
                <button class="act" data-op="merge" id="selMerge" title="merge with the next caption, texts included (⇧M)">⇆ Merge</button>
-               <button class="act del" data-op="del" title="delete; its time stays a gap (⌫)">× Delete</button>` : ''}</div>
-             ${EDIT ? `<input id="selIn" class="selin" placeholder="${s.l === 'subs' ? 'sub-task' : '[left hand] … | [right hand] …'}">` : '<div class="seltx" id="selTx"></div>'}
+               <button class="act del" data-op="del" title="delete; its time stays a gap (⌫)">× Delete</button>`}` : ''}</div>
+             ${EDIT ? `<input id="selIn" class="selin" aria-label="Current ${lineName(s.l, s.k)} caption" placeholder="${s.l === 'ins' ? 'instruction' : s.l === 'subs' ? 'sub-task' : '[left hand] … | [right hand] …'}">` : '<div class="seltx" id="selTx"></div>'}
              <div class="warn" id="selWarn"></div></div>
            <div id="selChk"></div></div>`;
     }
     if (!s) return;
-    const arr = L[s.l], x = arr[s.k], text = s.l === 'subs' ? x.desc : x.text, next = arr[s.k + 1];
-    const j = s.l === 'atoms' && hasSub ? ownerOf(L.subs, x) : -1;
-    const par = j >= 0 ? ['sub', `sub-task ${j + 1}`, L.subs[j].desc, L.subs[j], L.subs[j].check] : s.l === 'atoms' && hasSub
-      ? ['sub', 'sub-task', '(outside every sub-task)', null, null] : ['ins', 'instruction', L.ins, { start: 0, end: dur }, d.check.task];
-    $('#selP').className = `selrow par ${par[0]}`; $('#selPl').className = `chip ${par[0]}`; $('#selPl').textContent = par[1];
-    $('#selPf').textContent = par[4] ? `⚑ ${par[4].error}` : '';
-    $('#selPt').textContent = par[3] ? `${fmt(par[3].start)} – ${fmt(par[3].end)}` : '';
-    $('#selPx').textContent = $('#selPx').title = par[2];
-    // Qwen's verdicts on the parent and on the selected sub-task, with the accept button in edit mode
-    const sc = s.l === 'subs' ? x.check : null;
-    $('#selChk').innerHTML = (par[4] ? note(par[4], par[2], par[1]) : '') + (sc ? note(sc, text, lineName(s.l, s.k))
-      + (EDIT && text !== sc.new ? '<button data-op="sugg" title="copy the suggested text into this sub-task">✓ use suggestion</button>' : '') : '');
+    const arr = s.l === 'ins' ? [] : L[s.l], x = s.l === 'ins' ? { start: 0, end: dur, text: L.ins } : arr[s.k];
+    const text = s.l === 'subs' ? x.desc : x.text, next = arr[s.k + 1];
+    if (s.l !== 'ins') {
+      const j = s.l === 'atoms' ? lastSub : -1;
+      const par = j >= 0 ? ['sub', `sub-task ${j + 1}`, L.subs[j].desc, L.subs[j], L.subs[j].check] : s.l === 'atoms' && hasSub
+        ? ['sub', 'sub-task', '(outside every sub-task)', null, null] : ['ins', 'instruction', L.ins, { start: 0, end: dur }, d.check.task];
+      $('#selP').className = `selrow par ${par[0]}`; $('#selPl').className = `chip ${par[0]}`; $('#selPl').textContent = par[1];
+      $('#selPf').textContent = par[4] ? `⚑ ${par[4].error}` : '';
+      $('#selPt').textContent = par[3] ? `${fmt(par[3].start)} – ${fmt(par[3].end)}` : '';
+      $('#selPx').textContent = $('#selPx').title = par[2];
+      // Qwen's verdicts on the parent and on the selected sub-task, with the accept button in edit mode
+      const sc = s.l === 'subs' ? x.check : null;
+      $('#selChk').innerHTML = (par[4] ? note(par[4], par[2], par[1]) : '') + (sc ? note(sc, text, lineName(s.l, s.k))
+        + (EDIT && text !== sc.new ? '<button data-op="sugg" title="copy the suggested text into this sub-task">✓ use suggestion</button>' : '') : '');
+    } else $('#selChk').innerHTML = note(d.check.task, text, 'instruction');
     $('#selT').textContent = `${fmt(x.start)} – ${fmt(x.end)} · ${(x.end - x.start).toFixed(1)} s`;
     const dups = Object.entries(tagCount(text)).filter(([, n]) => n > 1);
     $('#selWarn').innerHTML = dups.length ? `⚠ duplicated ${dups.map(([t, n]) => `${esc(t)} ×${n}`).join(', ')}: keep one clause per hand<div class="prev">${hands(text, true)}</div>` : '';
-    if (!EDIT) { $('#selTx').innerHTML = s.l === 'subs' ? esc(text) : hands(text, true); return; }
+    if (!EDIT) { $('#selTx').innerHTML = s.l === 'atoms' ? hands(text, true) : esc(text); return; }
     const inp = $('#selIn');
     if (document.activeElement !== inp) inp.value = text;
     inp.classList.toggle('dup', dups.length > 0);
+    if (s.l === 'ins') return;
     const gap = (next ? next.start : END) - x.end;
     $('#selAdd').disabled = gap < 0.1 - 1e-6;
     $('#selAdd').title = gap < 0.1 - 1e-6 ? 'no gap after this caption: shorten it or the next one first (a)'
@@ -1043,11 +1064,11 @@ function renderView(e, d, t0, sel0) {
                  : ME ? `assigned to ${e.assignee || 'nobody'}: only they or an admin can save it` : 'log in (top right) to save';
   };
   const msg = (text, err) => { const m = $('#edmsg'); if (m) { m.textContent = text; m.classList.toggle('err', !!err); } };
-  const changed = (redraw = true) => {
+  const changed = (redraw = true, inPlace = false) => {
     EDIT.dirty = true;
     msg('');
     if (redraw) drawTable(); else { saveBtn(); drawComparison(); }
-    drawLanes();
+    if (inPlace) { syncTrack(); follow(true); } else drawLanes();
   };
   // undo / redo: a snapshot of the three levels before each change
   const snap = () => JSON.stringify({ ins: EDIT.ins, subs: EDIT.subs, atoms: EDIT.atoms });
@@ -1117,6 +1138,7 @@ function renderView(e, d, t0, sel0) {
       saveState();
       arr.splice(k + 1, 0, { start: t, end: x.end, text: x.text }); x.end = t;
       SEL = { l, k: k + 1 };
+      v.currentTime = t;
       return changed();
     }
     if (op === 'del') {
@@ -1145,6 +1167,7 @@ function renderView(e, d, t0, sel0) {
       saveState();
       arr.splice(k + 1, 0, { start: x.end, end: stop, text: '' });
       SEL = { l, k: k + 1 };
+      v.currentTime = arr[k + 1].start;
       changed(); editSel();
     }
   };
@@ -1178,15 +1201,21 @@ function renderView(e, d, t0, sel0) {
   });
   // #selbox: its buttons run on the selected line; its text field edits it (one undo step per focus, like the table's)
   $('#selbox').addEventListener('click', ev => {
-    const b = ev.target.closest('button[data-op]'), s = cur();
+    const b = ev.target.closest('button[data-op]'), s = PLAY;
     if (b && EDIT && s) run(b.dataset.op, s.l, s.k);
   });
-  $('#selbox').addEventListener('focusin', ev => { if (EDIT && ev.target.id === 'selIn') EDIT.typing = false; });
+  $('#selbox').addEventListener('focusin', ev => {
+    if (EDIT && ev.target.id === 'selIn') {
+      EDIT.typing = false;
+      if (PLAY && PLAY.l !== 'ins') select(PLAY.l, PLAY.k);
+    }
+  });
   $('#selbox').addEventListener('input', ev => {
-    const s = cur(); if (!EDIT || !s || ev.target.id !== 'selIn') return;
+    const s = PLAY; if (!EDIT || !s || ev.target.id !== 'selIn') return;
     if (!EDIT.typing) { saveState(); EDIT.typing = true; }
-    EDIT[s.l][s.k].text = ev.target.value;
-    const t = $(`#levels tr[data-l="${s.l}"][data-k="${s.k}"] input.tx`); if (t) t.value = ev.target.value;
+    if (s.l === 'ins') EDIT.ins = ev.target.value; else EDIT[s.l][s.k].text = ev.target.value;
+    const t = s.l === 'ins' ? $('#levels input[data-l="ins"]') : $(`#levels tr[data-l="${s.l}"][data-k="${s.k}"] input.tx`);
+    if (t) t.value = ev.target.value;
     changed(false);
   });
   $('#levels').addEventListener('change', ev => {
@@ -1226,6 +1255,8 @@ function renderView(e, d, t0, sel0) {
   $('#guideBtn').addEventListener('click', () => guide(true));
   if (EDITON && canSave(e)) startEdit(); else { drawTable(); drawLanes(); }
   v.addEventListener('timeupdate', follow);
+  v.addEventListener('seeking', follow);
+  v.addEventListener('seeked', follow);
   v.addEventListener('loadedmetadata', follow);
   v.addEventListener('timeupdate', keepHead);
   const seek = t => { v.currentTime = t; follow(); };
@@ -1283,12 +1314,30 @@ function renderView(e, d, t0, sel0) {
     inp.className = 'tled'; inp.value = old;
     if (seg.offsetLeft > seg.parentElement.offsetWidth - 320) { inp.style.left = 'auto'; inp.style.right = '0'; }   // opens leftwards near the end
     seg.classList.add('editing'); seg.appendChild(inp); inp.focus();
-    let fin = false;
+    let fin = false, saved = false;
+    const wasDirty = EDIT.dirty, redo = [...EDIT.redo];
+    const applyText = () => {
+      if (inp.value === (l === 'ins' ? EDIT.ins : EDIT[l][k].text)) return;
+      if (!saved) { saveState(); saved = true; }
+      if (l === 'ins') EDIT.ins = inp.value; else EDIT[l][k].text = inp.value;
+      const text = l === 'atoms' ? inp.value.replace(/\[[a-z ]+\] ?/g, '') : inp.value;
+      if (seg.firstChild?.nodeType === Node.TEXT_NODE) seg.firstChild.textContent = text;
+      else seg.prepend(document.createTextNode(text));
+      seg.title = inp.value;
+      const field = l === 'ins' ? $('#levels input[data-l="ins"]') : $(`#levels tr[data-l="${l}"][data-k="${k}"] input.tx`);
+      if (field) field.value = inp.value;
+      changed(false, true);
+    };
     const end = keep => {
       if (fin) return; fin = true;
-      if (keep && inp.value !== old) { saveState(); if (l === 'ins') EDIT.ins = inp.value; else EDIT[l][k].text = inp.value; changed(); }
-      else drawLanes();
+      if (keep) applyText();
+      else if (saved) {
+        if (l === 'ins') EDIT.ins = old; else EDIT[l][k].text = old;
+        EDIT.undo.pop(); EDIT.redo = redo; EDIT.dirty = wasDirty;
+      }
+      drawTable(); drawLanes();
     };
+    inp.addEventListener('input', applyText);
     inp.addEventListener('keydown', e2 => { e2.stopPropagation(); if (e2.key === 'Enter') end(true); else if (e2.key === 'Escape') end(false); });
     inp.addEventListener('blur', () => end(true));
   });
@@ -1307,6 +1356,10 @@ function renderView(e, d, t0, sel0) {
   document.onfullscreenchange = syncCC;   // assignment: no listener pile-up across renders
   syncCC();
   $('#cc').addEventListener('change', syncCC);
+  $('#annotationToggle').addEventListener('change', ev => {
+    ANNOTATIONON = ev.target.checked; store('selected-annotation', ANNOTATIONON ? '1' : '0');
+    $('#selbox').hidden = !ANNOTATIONON;
+  });
   $('#fs').addEventListener('click', () => { document.fullscreenElement ? document.exitFullscreen() : $('#stage').requestFullscreen(); });
   $('#rate').addEventListener('change', ev => { RATE = +ev.target.value; store('rate', RATE); v.playbackRate = RATE; });
   $('#videoSize').addEventListener('input', ev => {
