@@ -20,7 +20,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
 (async () => {
   assert.ok(fs.existsSync(db));
   browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, hasTouch: true });
   const anonymous = await context.request.get(`${base}/captioning_data/`, { maxRedirects: 0 });
   assert.equal(anonymous.status(), 302);
   assert.equal(anonymous.headers().location, '/?next=/captioning_data/');
@@ -84,6 +84,56 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.waitForFunction(() => document.fullscreenElement?.id === 'stage');
   assert.ok(await page.locator('#stage').evaluate(element => element.getBoundingClientRect().width >= innerWidth - 1));
   await page.evaluate(() => document.exitFullscreen());
+  const captionsInside = () => page.waitForFunction(() => {
+    const frame = document.querySelector('#stage').getBoundingClientRect(), box = document.querySelector('#ovl').getBoundingClientRect();
+    return box.left >= frame.left - 1 && box.top >= frame.top - 1 && box.right <= frame.right + 1 && box.bottom <= frame.bottom + 1;
+  }, null, { timeout: 3000 }).then(result => result.jsonValue());
+  const dragCaptions = async (x, y) => {
+    const box = await page.locator('#ovlAtom').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down(); await page.mouse.move(x, y, { steps: 5 }); await page.mouse.up();
+  };
+  await page.evaluate(() => document.querySelector('video').pause());
+  const timeBeforeDrag = await page.locator('video').evaluate(video => video.currentTime);
+  const frame = await page.locator('#stage').boundingBox();
+  await dragCaptions(frame.x - 100, frame.y - 100);
+  assert.ok(await captionsInside());
+  assert.deepEqual(await page.evaluate(() => CAPTION_POS), [0, 0]);
+  await dragCaptions(frame.x + frame.width + 100, frame.y + frame.height + 100);
+  assert.ok(await captionsInside());
+  assert.deepEqual(await page.evaluate(() => CAPTION_POS), [1, 1]);
+  assert.equal(await page.locator('video').evaluate(video => video.paused), true);
+  assert.equal(await page.locator('video').evaluate(video => video.currentTime), timeBeforeDrag);
+  await page.locator('#ovl').focus(); await page.keyboard.press('Home');
+  assert.equal(await page.evaluate(() => CAPTION_POS), null);
+  const home = await page.locator('#ovl').boundingBox();
+  await page.keyboard.press('ArrowUp');
+  assert.ok((await page.locator('#ovl').boundingBox()).y < home.y);
+  const position = await page.evaluate(() => CAPTION_POS);
+  await page.reload(); await page.locator('#edSave').waitFor();
+  await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
+  assert.deepEqual(await page.evaluate(() => CAPTION_POS), position);
+  assert.ok(await captionsInside());
+  await page.locator('#videoSize').evaluate(input => { input.value = '50'; input.dispatchEvent(new Event('input')); });
+  await page.waitForFunction(() => document.querySelector('#videos').style.width === '50%');
+  assert.ok(await captionsInside());
+  await page.locator('#fs').click();
+  await page.waitForFunction(() => document.fullscreenElement?.id === 'stage');
+  assert.ok(await captionsInside());
+  await page.evaluate(() => document.exitFullscreen());
+  await page.locator('#videoSize').evaluate(input => { input.value = '100'; input.dispatchEvent(new Event('input')); });
+  await page.locator('#cc').uncheck(); assert.equal(await page.locator('#ovl').isHidden(), true);
+  await page.locator('#cc').check(); assert.ok(await captionsInside());
+  const touch = await context.newCDPSession(page), touchBox = await page.locator('#ovlAtom').boundingBox();
+  const point = { x: touchBox.x + touchBox.width / 2, y: touchBox.y + touchBox.height / 2 };
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x, y: point.y - 40 }] });
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  assert.ok(await captionsInside());
+  assert.ok((await page.locator('#ovlAtom').boundingBox()).y < touchBox.y);
+  await touch.detach();
+  await page.locator('#ovlAtom').dblclick();
+  assert.equal(await page.evaluate(() => CAPTION_POS), null);
   const duration = initial.duration;
   const fixture = { ...initial, instruction: 'Instruction fixture',
     subtasks: [{ i: 0, start: 0, end: duration * 0.75, desc: 'Subtask fixture' }],
@@ -91,6 +141,12 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
       { start: duration * 0.375, end: duration * 0.5, text: '[both hands] Second action' }] };
   await page.evaluate(fixture => renderView(CUR, fixture, 0), fixture);
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
+  await page.locator('#selIn').fill('[both hands] ' + 'move the item carefully '.repeat(30));
+  await page.locator('#videoSize').evaluate(input => { input.value = '25'; input.dispatchEvent(new Event('input')); });
+  assert.ok(await captionsInside());
+  await page.keyboard.press('Control+z');
+  await page.locator('#videoSize').evaluate(input => { input.value = '100'; input.dispatchEvent(new Event('input')); });
+  assert.ok(await captionsInside());
   const seek = async time => page.evaluate(time => {
     const video = document.querySelector('video'); video.pause(); video.currentTime = time;
     video.dispatchEvent(new Event('timeupdate'));
@@ -291,7 +347,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     assert.equal((await context.request.get(`${base}/api/admin/videos`)).status(), 403);
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: mock login/roles; real video; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; comparison beside video, responsive stacking, collapse and fullscreen; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
+  console.log('PASS: mock login/roles; real video; caption mouse/touch drag, bounds, keyboard/reset, position persistence, resize/fullscreen; Space playback, trim/extend shortcuts, undo and typing isolation; playhead atomic/subtask/instruction priority; live table/panel/timeline/native-caption sync; toggle persistence; isolated corrections; comparison beside video, responsive stacking, collapse and fullscreen; before/after drafts, timing, text safety, saved/reverted history, video jumps, mobile layout; admin navigation; logout.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   try { if (restoreCaptions) await restoreCaptions(); }
   catch (error) { console.error(error); process.exitCode = 1; }
