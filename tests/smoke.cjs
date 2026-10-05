@@ -199,6 +199,7 @@ function request(url, method = 'GET') { return new Promise((resolve, reject) => 
   assert.equal((await postEdit([])).status(), 400);
   assert.equal((await postEdit({ ...edit, version: false })).status(), 400);
   assert.equal((await postEdit({ ...edit, review_flag: 'true' })).status(), 400);
+  assert.equal((await postEdit({ ...edit, review_flag: true, review_reason: '   ' })).status(), 400);
   assert.equal((await postEdit({ ...edit, crop: { start: 1, end: 0.5 } })).status(), 400);
   assert.equal(fs.existsSync(`${tmp}/edits.jsonl`), false);
   const media = await context.request.get(`${base}/captioning_data/video?${query}`, { headers: { Range: 'bytes=2-5' } });

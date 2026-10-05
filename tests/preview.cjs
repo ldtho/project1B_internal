@@ -12,6 +12,7 @@ let browser;
 let restoreCaptions;
 const captionState = episode => ({ instruction: episode.instruction,
   review_flag: !!episode.review_flag, crop: episode.crop ?? null,
+  review_reason: episode.review_reason || '',
   subtasks: episode.subtasks.map(cue => ({ start: cue.start, end: cue.end, text: cue.text ?? cue.desc })),
   atomic: episode.atomic.map(cue => ({ start: cue.start, end: cue.end, text: cue.text })) });
 const grantAdmin = enabled => execFileSync(python, ['-c',
@@ -44,8 +45,8 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     await page.evaluate(() => {
       window.qaProgressOriginal = { EPS, ROSTER, CUR, FILTERED, ME, who: $('#whoSel').value, open: $('#qaStats').open };
       const episode = { ...CUR, duration: 8 };
-      EPS = [{ ...episode, assignee: 'QA reviewer fixture', qa: 'corrected' },
-        { ...episode, id: 'qa-confirmed-fixture', assignee: 'QA admin fixture', qa: 'confirmed' },
+      EPS = [{ ...episode, assignee: 'QA reviewer fixture', qa: 'corrected', review_flag: true },
+        { ...episode, id: 'qa-confirmed-fixture', assignee: 'QA admin fixture', qa: 'confirmed', review_flag: true },
         { ...episode, id: 'qa-pending-fixture', assignee: 'QA reviewer fixture', qa: null }];
       CUR = EPS[0]; FILTERED = EPS;
       ROSTER = { reviewers: ['QA reviewer fixture'], admins: ['QA admin fixture'] };
@@ -401,6 +402,10 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.equal(await page.locator('#captionCompare').evaluate(element => getComputedStyle(element).overflowY), 'auto');
   await page.locator('.review-media').screenshot({ path: path.join(state, 'captioning-data-video-comparison.png') });
   await page.getByRole('button', { name: 'Flag for Review', exact: true }).click();
+  await page.locator('#reviewReason').focus(); await page.keyboard.press('Control+s');
+  assert.match(await page.locator('#edmsg').innerText(), /Write a reason/);
+  assert.equal(await page.evaluate(() => EDIT.version), version);
+  await page.locator('#reviewReason').fill('Hands are obscured; please verify this action.');
   assert.equal(await page.locator('#reviewFlag').getAttribute('aria-pressed'), 'true');
   assert.match(await page.locator('#cmpContent').innerText(), /Flagged for review/);
   await page.getByRole('button', { name: 'Remove Review Flag', exact: true }).click();
@@ -438,14 +443,17 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.deepEqual(records.at(-1).before, captionState(initial));
   assert.deepEqual(records.at(-1).original, initial.original);
   assert.equal(records.at(-1).review_flag, true); assert.deepEqual(records.at(-1).crop, testCrop);
-  assert.equal(await page.evaluate(() => CUR.qa), 'flagged');
-  await page.locator('#qaSel').selectOption('flagged');
+  assert.equal(await page.evaluate(() => CUR.qa), 'corrected');
+  assert.equal(records.at(-1).review_reason, 'Hands are obscured; please verify this action.');
+  await page.locator('#flagSel').selectOption('flagged for review');
   assert.ok(await page.evaluate(() => FILTERED.some(episode => episode.id === CUR.id)));
+  await page.locator('#flagSel').selectOption('');
   await page.locator('#qaSel').selectOption('todo');
-  assert.ok(await page.evaluate(() => FILTERED.some(episode => episode.id === CUR.id)));
+  assert.equal(await page.evaluate(() => FILTERED.some(episode => episode.id === CUR.id)), false);
   await page.locator('#qaSel').selectOption('');
   await page.reload(); await page.locator('#edSave').waitFor();
   assert.equal(await page.evaluate(() => EDIT.review_flag), true);
+  assert.equal(await page.locator('#reviewReason').inputValue(), 'Hands are obscured; please verify this action.');
   assert.deepEqual(await page.evaluate(() => EDIT.crop), testCrop);
   const cookies = await context.cookies();
   const csrf = cookies.find(cookie => cookie.name === '__Host-rbt_csrf').value;
@@ -461,6 +469,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.equal(savedHistory.instruction, savedHistory.original.instruction);
   assert.equal(savedHistory.review_flag, false); assert.equal(savedHistory.crop, null);
   assert.equal(savedHistory.history.at(-2).captions.review_flag, true);
+  assert.equal(savedHistory.history.at(-2).captions.review_reason, 'Hands are obscured; please verify this action.');
   assert.deepEqual(savedHistory.history.at(-2).captions.crop, testCrop);
   await page.locator('#cmpAfter').selectOption(String(version + 1));
   assert.match(await page.locator('#cmpContent').innerText(), /Local preview correction/);

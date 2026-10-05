@@ -173,8 +173,6 @@ def qa_status(r: dict, live: dict | None) -> str | None:
     does, so formatting alone never counts as a correction; a row that fails it was corrected by any save."""
     if not live:
         return None
-    if live.get("review_flag"):
-        return "flagged"
     if live.get("crop"):
         return "corrected"
     cue = lambda k: [{"start": a, "end": b, "text": t} for a, b, t in parse_cues(r.get(k) or "")]  # noqa: E731
@@ -244,7 +242,8 @@ def episode(dataset: str, path: str, r: dict, recs: list[dict] = (), check: dict
             "sub_durations": duration_stats(subs), "atomic_durations": duration_stats(atomic),
             "edited": {"editor": live["editor"], "time": live["time"]} if live else None,
             "qa": qa_status(r, live), "assignee": assignee,
-            "review_flag": bool(live and live.get("review_flag")), "crop": live.get("crop") if live else None,
+            "review_flag": bool(live and live.get("review_flag")), "review_reason": live.get("review_reason", "") if live else "",
+            "crop": live.get("crop") if live else None,
             "check": chk, "n_flag": bool(chk["task"]) + len(chk["subs"])}
 
 
@@ -351,6 +350,12 @@ def clean_edit(e: dict, body: dict) -> dict:
     review_flag = body.get("review_flag", e.get("review_flag", False))
     if type(review_flag) is not bool:
         raise ValueError("Review flag must be a boolean")
+    review_reason = body.get("review_reason", e.get("review_reason", ""))
+    if not isinstance(review_reason, str) or len(review_reason) > 2000:
+        raise ValueError("Review reason must be text of at most 2000 characters")
+    review_reason = review_reason.strip() if review_flag else ""
+    if review_flag and not review_reason:
+        raise ValueError("A reason is required when flagging for review")
     crop = body.get("crop", e.get("crop"))
     if crop is not None:
         if not isinstance(crop, dict) or set(crop) != {"start", "end"} or any(type(crop[k]) not in (int, float) for k in crop):
@@ -392,7 +397,8 @@ def clean_edit(e: dict, body: dict) -> dict:
     except AssertionError as err:
         raise ValueError(f"atomic lines: {str(err).replace('cue ', 'line ')}") from None
     subtask = "\n".join(f"[{a:.3f} - {b:.3f}] {text}" for a, b, text in subs) if e["row"].get("subtask_source") else fmt_cues(subs)
-    return {"instruction": ins, "subtask": subtask, "caption": fmt_cues(atoms), "review_flag": review_flag, "crop": crop}
+    return {"instruction": ins, "subtask": subtask, "caption": fmt_cues(atoms),
+            "review_flag": review_flag, "review_reason": review_reason, "crop": crop}
 
 
 def export(sources: list[tuple[str, str]], edits: dict[str, list[dict]], out_dir: Path) -> None:
@@ -409,7 +415,7 @@ def export(sources: list[tuple[str, str]], edits: dict[str, list[dict]], out_dir
                                                          "edited_by": live["editor"], "edited_at": live["time"],
                                                          "edited_by_id": live.get("editor_id"),
                                                          "edit_version": live.get("version", len(edits[eid(dataset_of(dataset, r), r)]))}
-                r |= {"review_flag": live.get("review_flag", False), "video_crop": live.get("crop"),
+                r |= {"review_flag": live.get("review_flag", False), "review_reason": live.get("review_reason", ""), "video_crop": live.get("crop"),
                       "video_crop_timestamp_origin": "episode", "training_ready": not live.get("review_flag", False)}
                 n += 1
             rows.append(json.dumps(r))
@@ -466,6 +472,7 @@ def summary(e: dict) -> dict:
 def caption_state(e: dict) -> dict:
     return {"instruction": e["instruction"],
             "review_flag": e.get("review_flag", False), "crop": e.get("crop"),
+            "review_reason": e.get("review_reason", ""),
             "subtasks": [{"start": s["start"], "end": s["end"], "text": s["desc"]} for s in e["subtasks"]],
             "atomic": [{k: a[k] for k in ("start", "end", "text")} for a in e["atomic"]]}
 
@@ -496,6 +503,7 @@ def detail(e: dict, recs: list[dict] = (), source_sha256: str | None = None) -> 
             entry["captions"] = entry["original"] if rec.get("revert") else {
                 "instruction": rec["instruction"],
                 "review_flag": rec.get("review_flag", False), "crop": rec.get("crop"),
+                "review_reason": rec.get("review_reason", ""),
                 "subtasks": [{"start": a, "end": b, "text": text} for a, b, text in parse_cues(rec["subtask"])],
                 "atomic": [{"start": a, "end": b, "text": text} for a, b, text in parse_cues(rec["caption"])]}
             previous = entry["captions"] if same_source else original

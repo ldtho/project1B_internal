@@ -226,7 +226,7 @@
   .light { display:inline-block; width:10px; height:10px; border-radius:50%; flex:none; }
   .light.corrected { background:#16a34a; box-shadow:0 0 0 2px #bbf7d0; }
   .light.confirmed { background:#f59e0b; box-shadow:0 0 0 2px #fde68a; }
-  .light.flagged { background:var(--bad); box-shadow:0 0 0 2px #fecaca; }
+  #reviewReason { display:block; width:100%; margin:5px 0 10px; padding:8px; font:inherit; }
   .crop-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 0; }
   .crop-controls input[type="text"] { width:75px; }
   .crop-mask { position:absolute; top:0; bottom:0; background:rgba(15,23,42,.3); pointer-events:none; z-index:4; }
@@ -364,7 +364,6 @@
     <option value="todo">not reviewed yet</option>
     <option value="corrected">● corrected</option>
     <option value="confirmed">● saved unchanged</option>
-    <option value="flagged">⚑ flagged for review</option>
   </select>
   <span class="count" id="count"></span>
   <span id="me"></span>
@@ -584,7 +583,7 @@ const clamp = (t, a, b) => Math.max(a, Math.min(b, t));
 // The QA login: {name, role, token} from /api/login, kept in this browser; null = browsing read-only.
 let ME = null, ROSTER = { reviewers: [], admins: [] };
 const canSave = e => ME && (AUTH || ME.role === 'admin' || e.assignee === ME.name);
-const qaLabel = qa => qa === 'corrected' ? 'corrected' : qa === 'flagged' ? 'flagged for review' : 'saved unchanged';
+const qaLabel = qa => qa === 'corrected' ? 'corrected' : 'saved unchanged';
 const qaLight = e => e.qa ? `<span class="light ${e.qa}" title="${qaLabel(e.qa)} by ${esc(e.edited?.editor)} · ${esc(e.edited?.time)}"></span>` : '';
 function showMe() {
   $('#me').innerHTML = ME ? `👤 <b>${esc(ME.name)}</b>${ME.role === 'admin' ? ' (admin)' : ''}<button id="logout">${AUTH ? 'sign out' : 'switch'}</button>`
@@ -702,7 +701,7 @@ function applyFilter() {
   const scene = $('#sceneSel').value, level = $('#levelSel').value;
   const who = $('#whoSel').value === '@me' ? ME?.name : $('#whoSel').value;
   FILTERED = EPS.filter(e => (!ds || e.dataset === ds)
-                             && (!who || e.assignee === who) && (!qa || (qa === 'todo' ? !e.qa || e.qa === 'flagged' : e.qa === qa))
+                             && (!who || e.assignee === who) && (!qa || (qa === 'todo' ? !e.qa : e.qa === qa))
                               && (!flag || (flag === '@flagged' ? e.flags.length : flag === '@clear' ? !e.flags.length : e.flags.includes(flag)))
                               && (!scene || e.scene === scene) && (!level || levelLabel(e) === level)
                               && (!HITS || HITS.has(e.id))
@@ -826,6 +825,8 @@ function renderView(e, d, t0, sel0) {
         <span id="edmsg"></span></span><span class="sp"></span>
       <span class="edonly"><button id="edDiscard" title="drop the unsaved changes">discard</button><button id="edSave" class="pri" title="save (Ctrl+S)">save</button></span></div>
     <div class="selbox" id="selbox" ${ANNOTATIONON ? '' : 'hidden'}></div>
+    <div id="reviewReasonBox" hidden><label for="reviewReason">Reason for review (required)</label>
+      <textarea id="reviewReason" rows="2" maxlength="2000" placeholder="Describe what needs another review"></textarea></div>
     <details id="cropTool" ${d.crop ? 'open' : ''}><summary>Crop video</summary>
       <div class="crop-controls">
         <label>Start <input type="text" id="cropStart" aria-label="Crop start" ${canSave(e) ? '' : 'disabled'}></label>
@@ -857,10 +858,10 @@ function renderView(e, d, t0, sel0) {
   function drawComparison() {
     const levels = lv();
     const current = { instruction: levels.ins, subtasks: levels.subs.map(s => ({ ...s, text: s.desc })), atomic: levels.atoms,
-      crop: EDIT ? EDIT.crop : d.crop, review_flag: EDIT ? EDIT.review_flag : d.review_flag };
+      crop: EDIT ? EDIT.crop : d.crop, review_flag: EDIT ? EDIT.review_flag : d.review_flag, review_reason: EDIT ? EDIT.review_reason : d.review_reason };
     const afterValue = $('#cmpAfter').value;
     const afterRevision = versions.find(r => String(r.version) === (afterValue === 'current' ? String(d.version) : afterValue));
-    const saved = { instruction: d.instruction, subtasks: d.subtasks.map(s => ({ ...s, text: s.desc })), atomic: d.atomic, crop: d.crop, review_flag: d.review_flag };
+    const saved = { instruction: d.instruction, subtasks: d.subtasks.map(s => ({ ...s, text: s.desc })), atomic: d.atomic, crop: d.crop, review_flag: d.review_flag, review_reason: d.review_reason };
     const selected = value => value === 'current' ? current : value === '0' ? d.original : versions.find(r => String(r.version) === value)?.captions;
     const beforeValue = $('#cmpBefore').value;
     const previous = afterValue === 'current' && EDIT?.dirty ? saved
@@ -887,6 +888,7 @@ function renderView(e, d, t0, sel0) {
     const groups = [ ['Instruction', [[{ text: before.instruction }, { text: after.instruction }]], false],
       ['Video crop', [[{ text: before.crop ? `${fmt(before.crop.start)} – ${fmt(before.crop.end)}` : 'Full video' }, { text: after.crop ? `${fmt(after.crop.start)} – ${fmt(after.crop.end)}` : 'Full video' }]], false],
       ['Review flag', [[{ text: before.review_flag ? 'Flagged for review' : 'Not flagged' }, { text: after.review_flag ? 'Flagged for review' : 'Not flagged' }]], false],
+      ['Review reason', [[{ text: before.review_reason || 'No reason recorded' }, { text: after.review_reason || 'No reason recorded' }]], false],
       ['Sub-tasks', captionPairs(before.subtasks, after.subtasks), true],
       ['Atomic actions', captionPairs(before.atomic, after.atomic), true] ];
     const body = groups.map(([title, pairs, timed]) => {
@@ -1128,7 +1130,7 @@ function renderView(e, d, t0, sel0) {
     if (inPlace) { syncTrack(); follow(true); } else drawLanes();
   };
   // undo / redo: a snapshot of the three levels before each change
-  const snap = () => JSON.stringify({ ins: EDIT.ins, subs: EDIT.subs, atoms: EDIT.atoms, review_flag: EDIT.review_flag, crop: EDIT.crop });
+  const snap = () => JSON.stringify({ ins: EDIT.ins, subs: EDIT.subs, atoms: EDIT.atoms, review_flag: EDIT.review_flag, review_reason: EDIT.review_reason, crop: EDIT.crop });
   const saveState = () => { EDIT.undo.push(snap()); if (EDIT.undo.length > 200) EDIT.undo.shift(); EDIT.redo = []; };
   const undo = (from, to, what) => {
     if (!from.length) return msg(`nothing to ${what}`);
@@ -1171,7 +1173,7 @@ function renderView(e, d, t0, sel0) {
     Object.assign(e, { instruction: j.instruction, n_sub: j.subtasks.length, n_atomic: j.atomic.length,
                        sub_durations: j.sub_durations, atomic_durations: j.atomic_durations,
                        partial: j.partial, edited: j.edited, qa: j.qa, version: j.version,
-                       review_flag: j.review_flag, crop: j.crop,
+                       review_flag: j.review_flag, review_reason: j.review_reason, crop: j.crop,
                        annotation_levels: j.annotation_levels, annotation_level: j.annotation_level, flags: j.flags });
     applyFilter();
     renderStats();
@@ -1184,9 +1186,12 @@ function renderView(e, d, t0, sel0) {
   const save = () => {
     if (!EDIT || $('#edSave').disabled) return;
     if (!canSave(e)) return msg($('#edSave').title, true);
+    if (EDIT.review_flag && !EDIT.review_reason?.trim()) {
+      msg('Write a reason before saving the review flag.', true); $('#reviewReason').focus(); return;
+    }
     const index = FILTERED.indexOf(e), next = index < 0 ? [] : FILTERED.slice(index + 1);
     msg('saving …'); $('#edSave').disabled = true;
-    post('/api/edit', { ...(!AUTH && { token: ME.token }), id: e.id, version: EDIT.version, instruction: EDIT.ins, subtasks: EDIT.subs, atomic: EDIT.atoms, review_flag: EDIT.review_flag, crop: EDIT.crop })
+    post('/api/edit', { ...(!AUTH && { token: ME.token }), id: e.id, version: EDIT.version, instruction: EDIT.ins, subtasks: EDIT.subs, atomic: EDIT.atoms, review_flag: EDIT.review_flag, review_reason: EDIT.review_reason, crop: EDIT.crop })
       .then(j => done(j, next), err => { if (CUR === e) { msg(err.message, true); $('#edSave').disabled = false; } });
   };
 
@@ -1304,6 +1309,7 @@ function renderView(e, d, t0, sel0) {
     EDIT = { ins: d.instruction, subs: d.subtasks.map(s => ({ start: s.start, end: s.end, text: s.desc, check: s.check })),
              atoms: d.atomic.map(a => ({ start: a.start, end: a.end, text: a.text })), version: d.version, dirty: false,
              review_flag: !!d.review_flag, crop: d.crop ? { ...d.crop } : null,
+             review_reason: d.review_reason || '',
              undo: [], redo: [], typing: false };
     drawTable(); drawLanes();
   };
@@ -1311,6 +1317,10 @@ function renderView(e, d, t0, sel0) {
     const flagged = EDIT ? EDIT.review_flag : d.review_flag, crop = EDIT ? EDIT.crop : d.crop;
     $('#reviewFlag').textContent = flagged ? 'Remove Review Flag' : 'Flag for Review';
     $('#reviewFlag').setAttribute('aria-pressed', String(!!flagged));
+    $('#reviewReasonBox').hidden = !flagged;
+    const reason = EDIT ? EDIT.review_reason : d.review_reason || '';
+    if ($('#reviewReason').value !== reason) $('#reviewReason').value = reason;
+    $('#reviewReason').readOnly = !EDIT; $('#reviewReason').required = !!flagged;
     $('#cropStart').value = fmt(crop?.start ?? 0); $('#cropEnd').value = fmt(crop?.end ?? dur);
     $('#cropLeft').style.left = '0'; $('#cropLeft').style.width = `${100 * (crop?.start ?? 0) / dur}%`;
     $('#cropRight').style.right = '0'; $('#cropRight').style.width = `${100 * (dur - (crop?.end ?? dur)) / dur}%`;
@@ -1339,7 +1349,22 @@ function renderView(e, d, t0, sel0) {
   };
   $('#reviewFlag').addEventListener('click', () => {
     if (!ensureEditing()) return;
-    saveState(); EDIT.review_flag = !EDIT.review_flag; changed(); msg('Review flag changed. Save to store it.');
+    saveState(); EDIT.review_flag = !EDIT.review_flag;
+    if (!EDIT.review_flag) EDIT.review_reason = '';
+    changed(); msg('Review flag changed. Save to store it.');
+    if (EDIT.review_flag) $('#reviewReason').focus();
+  });
+  let reasonTyping = false;
+  $('#reviewReason').addEventListener('blur', () => { reasonTyping = false; });
+  $('#reviewReason').addEventListener('input', ev => {
+    if (!EDIT || !ensureEditing()) return;
+    if (!reasonTyping) { saveState(); reasonTyping = true; }
+    EDIT.review_reason = ev.target.value; changed(false, true);
+  });
+  $('#reviewReason').addEventListener('keydown', ev => {
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') {
+      ev.preventDefault(); ev.stopPropagation(); ev.target.blur(); save();
+    }
   });
   for (const edge of ['start', 'end']) {
     const key = edge === 'start' ? 'Start' : 'End';

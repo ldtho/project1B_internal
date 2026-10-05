@@ -78,10 +78,15 @@ with tempfile.TemporaryDirectory() as temporary:
     assert archived['original']['instruction'] == 'Original' and archived['before']['instruction'] == 'Original'
     assert archived['captions']['instruction'] == 'Corrected instruction'
     state = datasets.caption_state(replayed)
-    cropped = datasets.clean_edit(replayed, state | {'review_flag': True, 'crop': {'start': 0.2, 'end': 0.8}})
+    cropped = datasets.clean_edit(replayed, state | {'review_flag': True, 'review_reason': 'Hand action is occluded', 'crop': {'start': 0.2, 'end': 0.8}})
     cropped_record = record | cropped | {'version': 2, 'before': state, 'original': comparison['original']}
     cropped_episode = datasets.episode('EgoVerse', source, row, [record, cropped_record])
-    assert cropped_episode['qa'] == 'flagged' and 'flagged for review' in cropped_episode['flags']
+    assert cropped_episode['qa'] == 'corrected' and 'flagged for review' in cropped_episode['flags']
+    assert cropped_episode['review_reason'] == 'Hand action is occluded'
+    unchanged = datasets.clean_edit(datasets.episode('EgoVerse', source, row),
+                                   datasets.caption_state(datasets.episode('EgoVerse', source, row)) | {'review_flag': True, 'review_reason': 'Please double-check'})
+    assert datasets.episode('EgoVerse', source, row, [record | unchanged])['qa'] == 'confirmed'
+    assert datasets.episode('EgoVerse', source, row, [record | {'review_flag': True}])['qa'] == 'corrected'
     assert cropped_episode['crop'] == {'start': 0.2, 'end': 0.8}
     assert datasets.clean_edit(cropped_episode, {'instruction': state['instruction'], 'subtasks': state['subtasks'], 'atomic': state['atomic']}) == cropped
     assert datasets.episode('EgoVerse', source, row, [record, cropped_record | {'review_flag': False}])['qa'] == 'corrected'
@@ -98,6 +103,12 @@ with tempfile.TemporaryDirectory() as temporary:
         raise AssertionError('Accepted non-boolean review flag')
     except ValueError:
         pass
+    for reason in ['', '   ', None, False, 'x' * 2001]:
+        try:
+            datasets.clean_edit(replayed, state | {'review_flag': True, 'review_reason': reason})
+            raise AssertionError('Accepted invalid review reason')
+        except ValueError:
+            pass
     assert datasets.clean_edit(replayed, state | {'crop': {'start': 0, 'end': 1}})['crop'] is None
     history.write_bytes(encoded + (json.dumps(cropped_record) + '\n').encode())
     crop_output = root / 'cropped-training'
@@ -106,6 +117,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert cropped_export['video'] == row['video'] and cropped_export['caption'] == cropped_record['caption']
     assert cropped_export['video_crop'] == cropped_episode['crop'] and cropped_export['video_crop_timestamp_origin'] == 'episode'
     assert cropped_export['review_flag'] is True and cropped_export['training_ready'] is False
+    assert cropped_export['review_reason'] == 'Hand action is occluded'
     assert datasets.detail(cropped_episode, [record, cropped_record])['history'][-1]['captions']['crop'] == cropped_episode['crop']
     assert datasets.episode('EgoVerse', source, row, [record, cropped_record, revert])['crop'] is None
     history.write_bytes(encoded)
