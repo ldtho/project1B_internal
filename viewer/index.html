@@ -418,7 +418,8 @@
   <p>In a caption text field, type <kbd>lh</kbd>, <kbd>rh</kbd>, or <kbd>bh</kbd> followed by Space to insert
     <b>[left hand]</b>, <b>[right hand]</b>, or <b>[both hands]</b>. <kbd>Shift+Delete</kbd> (or <kbd>Shift+Backspace</kbd>) clears the whole phrase belonging to
     the tag at the cursor; press again to remove the empty tag. <b>Swap hands</b> or <kbd>Alt+S</kbd> exchanges left/right
-    hand tags; both-hands captions stay unchanged. Each action supports undo and remains a draft until saved.</p>
+    hand tags; both-hands captions stay unchanged. <kbd>Alt/Option+L</kbd>, <kbd>R</kbd>, or <kbd>B</kbd> changes only the tag
+    of the phrase at the cursor to left hand, right hand, or both hands. Phrase text stays intact. Each action supports undo and remains a draft until saved.</p>
   <h4>Filters and flags</h4>
   <ul>
     <li>Combine dataset, split, task, scene, annotation-level and flag filters to narrow the episode list.
@@ -536,13 +537,25 @@ const store = (k, v) => { try { return v === undefined ? localStorage.getItem(k)
 const TAG = /\[(left|right|both) hands?\]|\[ego\]/g;
 const tagCount = t => { const n = {}; for (const m of t.matchAll(TAG)) n[m[0]] = (n[m[0]] || 0) + 1; return n; };
 const swapHands = text => text.replace(/\[(left|right) hands?\]/gi, (_, hand) => `[${hand.toLowerCase() === 'left' ? 'right' : 'left'} hand]`);
-const deleteHandPhrase = (text, cursor) => {
+const handPhraseAt = (text, cursor) => {
   const tags = [...text.matchAll(new RegExp(TAG.source, 'gi'))], index = tags.findLastIndex(tag => tag.index <= cursor);
   if (index < 0) return null;
   const tag = tags[index], next = tags[index + 1];
   const tagEnd = tag.index + tag[0].length;
   const pipe = text.indexOf('|', tagEnd), end = Math.min(next?.index ?? text.length, pipe < 0 ? text.length : pipe);
-  if (cursor > end) return null;
+  return cursor > end ? null : { tag, tagEnd, end, next };
+};
+const setHandTag = (text, cursor, hand) => {
+  const phrase = handPhraseAt(text, cursor);
+  if (!phrase) return null;
+  const { tag, tagEnd } = phrase, replacement = `[${hand}]`;
+  return { text: text.slice(0, tag.index) + replacement + text.slice(tagEnd),
+           cursor: cursor >= tagEnd ? cursor + replacement.length - tag[0].length : tag.index + replacement.length };
+};
+const deleteHandPhrase = (text, cursor) => {
+  const phrase = handPhraseAt(text, cursor);
+  if (!phrase) return null;
+  const { tag, tagEnd, end, next } = phrase;
   if (text.slice(tagEnd, end).trim())
     return { text: text.slice(0, tagEnd) + (end === next?.index ? ' | ' : ' ') + text.slice(end), cursor: tagEnd + 1 };
   const before = text.slice(0, tag.index).replace(/\s*\|\s*$/, '').trimEnd();
@@ -1687,6 +1700,14 @@ function renderView(e, d, t0, sel0) {
       return false;
     }
     const textInput = inp?.matches('.tx, .selin') && !inp.readOnly ? inp : null;
+    const hand = { KeyL: 'left hand', KeyR: 'right hand', KeyB: 'both hands' }[ev.code];
+    if (textInput && !mod && ev.altKey && hand) return done(() => {
+      if (ev.repeat) return;
+      const cursor = textInput.selectionDirection === 'backward' ? textInput.selectionStart : textInput.selectionEnd;
+      const replacement = setHandTag(textInput.value, cursor, hand);
+      if (replacement) replaceCaptionInput(textInput, replacement.text, replacement.cursor);
+      else msg('Place the cursor inside a hand-tag phrase first.', true);
+    });
     if (!mod && ev.altKey && (key === 's' || ev.code === 'KeyS') && (!inp || textInput)) return done(() => {
       if (ev.repeat) return;
       if (textInput) return replaceCaptionInput(textInput, swapHands(textInput.value), textInput.selectionStart);

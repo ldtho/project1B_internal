@@ -557,6 +557,28 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.equal(await page.locator('#selIn').inputValue(), 'rhythm ');
   const twoHands = '[left hand] hold cup | [right hand] lift lid | [both hands] steady tray';
   const clearedHand = '[left hand] | [right hand] lift lid | [both hands] steady tray';
+  for (const [key, code, tag] of [['∫', 'KeyB', '[both hands]'], ['¬', 'KeyL', '[left hand]'], ['®', 'KeyR', '[right hand]']]) {
+    await page.locator('#selIn').fill(twoHands);
+    await page.locator('#selIn').evaluate(input => input.setSelectionRange(16, 16));
+    const prevented = await page.locator('#selIn').evaluate((input, keys) => {
+      const event = new KeyboardEvent('keydown', { ...keys, altKey: true, bubbles: true, cancelable: true });
+      input.dispatchEvent(event); return event.defaultPrevented;
+    }, { key, code });
+    assert.equal(prevented, true);
+    const expected = twoHands.replace('[left hand]', tag);
+    assert.equal(await page.locator('#selIn').inputValue(), expected);
+    assert.equal(await page.evaluate(() => EDIT.atoms[0].text), expected);
+    assert.equal(await page.locator('#levels tr[data-l="atoms"][data-k="0"] input.tx').inputValue(), expected);
+    assert.ok(await page.evaluate(text => [...document.querySelector('video').textTracks[0].cues].some(cue => cue.text === text), expected));
+    if (tag !== '[left hand]') {
+      await page.keyboard.press('Control+z');
+      assert.equal(await page.locator('#selIn').inputValue(), twoHands);
+    }
+  }
+  await page.locator('#selIn').fill(twoHands);
+  await page.locator('#selIn').evaluate(input => input.setSelectionRange(input.value.indexOf('lid'), input.value.indexOf('lid')));
+  await page.keyboard.press('Alt+b');
+  assert.equal(await page.locator('#selIn').inputValue(), twoHands.replace('[right hand]', '[both hands]'));
   await page.locator('#selIn').fill(twoHands);
   await page.locator('#selIn').evaluate(input => input.setSelectionRange(16, 16));
   await page.keyboard.press('Shift+Backspace');

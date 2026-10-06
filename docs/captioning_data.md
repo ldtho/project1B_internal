@@ -331,12 +331,15 @@ Hand editing shortcuts in caption text fields:
 | **lh + Space** | Insert `[left hand]`. |
 | **rh + Space** | Insert `[right hand]`. |
 | **bh + Space** | Insert `[both hands]`. |
+| **Alt/Option+L** | Change only the tag of the phrase at the cursor to `[left hand]`. |
+| **Alt/Option+R** | Change only the tag of the phrase at the cursor to `[right hand]`. |
+| **Alt/Option+B** | Change only the tag of the phrase at the cursor to `[both hands]`. |
 | **Shift+Delete** / **Shift+Backspace** | With the cursor inside a tagged phrase, clear its entire text and keep the tag; press again to remove the empty tag and adjoining separator. Preserve other phrases and the segment. |
 | **Alt+S** / **Swap hands** | Exchange left/right tags across the focused caption, or the selected caption when outside a text field. Keep `[both hands]` unchanged. |
 
 For phrase deletion, place the cursor anywhere inside its text; selecting the phrase is unnecessary. If text is selected, the active end of the selection determines the phrase. Outside a caption text field, Shift+Delete/Backspace does not delete a segment.
 
-To change one phrase's tag, select the whole tag, including brackets, and type **lh**, **rh**, or **bh** followed by **Space**. The phrase text stays intact. **Alt+L/R/B** for changing only the tag at the cursor are proposed, not implemented.
+To change one phrase's tag, place the cursor inside it and press **Alt/Option+L**, **R**, or **B**. The phrase text and other tags stay intact. These shortcuts use physical key codes, so macOS Option symbols are not inserted. Alternatively, select the whole tag, including brackets, and type **lh**, **rh**, or **bh** followed by **Space**.
 
 Hand edits update the timeline, video and comparison immediately, support **Ctrl/Cmd+Z** undo, and remain drafts until saved. **Ctrl/Cmd+S** saves the episode.
 

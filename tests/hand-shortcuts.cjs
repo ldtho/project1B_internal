@@ -5,12 +5,20 @@ const path = require('node:path');
 const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, '../viewer/index.html'), 'utf8');
 const start = html.indexOf('const TAG = '), end = html.indexOf('const hands = ', start);
-const { swapHands, deleteHandPhrase } = vm.runInNewContext(html.slice(start, end) + '\n({ swapHands, deleteHandPhrase })');
+const { swapHands, deleteHandPhrase, setHandTag } = vm.runInNewContext(html.slice(start, end) + '\n({ swapHands, deleteHandPhrase, setHandTag })');
 const caption = '[left hand] hold cup | [right hand] lift lid | [both hands] steady tray';
 assert.equal(swapHands(caption), '[right hand] hold cup | [left hand] lift lid | [both hands] steady tray');
 assert.equal(swapHands(swapHands(caption)), caption);
 assert.equal(swapHands('The left hand holds a cup.'), 'The left hand holds a cup.');
 assert.equal(swapHands('[both hands] lift cup'), '[both hands] lift cup');
+for (const hand of ['left hand', 'right hand', 'both hands']) {
+  const changed = setHandTag(caption, caption.indexOf('lid'), hand);
+  assert.equal(changed.text, `[left hand] hold cup | [${hand}] lift lid | [both hands] steady tray`);
+  assert.equal(changed.cursor, changed.text.indexOf('lid'));
+}
+assert.equal(setHandTag('[LEFT HAND] hold cup', 14, 'both hands').text, '[both hands] hold cup');
+assert.equal(setHandTag('No hand tag', 4, 'left hand'), null);
+assert.equal(setHandTag('[left hand] cup | untagged text', 25, 'right hand'), null);
 for (const [cursor, first, second] of [
   [3, '[left hand] | [right hand] lift lid | [both hands] steady tray', '[right hand] lift lid | [both hands] steady tray'],
   [caption.indexOf('lid'), '[left hand] hold cup | [right hand] | [both hands] steady tray', '[left hand] hold cup | [both hands] steady tray'],
