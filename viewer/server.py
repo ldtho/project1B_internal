@@ -39,6 +39,7 @@ import subprocess
 import json
 import os
 import random
+import re
 import sys
 import threading
 import time
@@ -50,7 +51,7 @@ from urllib.parse import parse_qs, urlsplit
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 from data_prep.viz.corrector import inspect_server  # noqa: E402  (Range video serving, gzip JSON, WebVTT)
-from data_prep.corrector.captions import assert_valid, fmt_cues, normalize_line, parse_cues  # noqa: E402
+from data_prep.corrector.captions import assert_valid, fmt_cues, normalize_line, parse_cues as _parse_cues  # noqa: E402
 
 UI = HERE / "index.html"
 EDIT_LOG = "data/annotation_edits.jsonl"         # repo-relative, append-only
@@ -104,6 +105,17 @@ def owner(subs: list[dict], a: float, b: float) -> int:
     """Index of the sub-task cue an atomic line overlaps most, -1 when none."""
     best = max(((min(b, s["end"]) - max(a, s["start"]), s["i"]) for s in subs), default=(0.0, -1))
     return best[1] if best[0] > 0 else -1
+
+
+def parse_cues(caption: str) -> list[tuple[float, float, str]]:
+    """Keep native decimal precision; the training parser only accepts short timestamps."""
+    if "-->" in caption:
+        return _parse_cues(caption)
+    cues = []
+    for line in caption.strip().splitlines():
+        match = re.fullmatch(r"\[([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\]\s*(.+)", line.strip())
+        cues.extend([(float(match[1]), float(match[2]), match[3])] if match else _parse_cues(line))
+    return cues
 
 
 def dataset_of(dataset: str, r: dict) -> str:
@@ -294,6 +306,18 @@ def pantheon_annotations(r: dict, native: dict) -> dict:
     return r | update
 
 
+def prepare_row(r: dict) -> dict | None:
+    r = selected_recording(r)
+    if r is not None and r["episode_uid"].startswith("pantheon/"):
+        native = json.loads(Path(r["source_annotation"]).read_text())
+        r = pantheon_annotations(r, native)
+        if r.get("split") is None:
+            r = r | {"split": "unsplit", "task": " / ".join(native.get("task_label") or []) or r["instruction"],
+                     "original_caption": r.get("caption_original", ""),
+                     "format_status": "Format corrected; human review pending"}
+    return r
+
+
 def load(sources: list[tuple[str, str]], edits: dict[str, list[dict]] | None = None,
          checks: dict[str, dict] | None = None, assigned: dict[str, str] | None = None) -> list[dict]:
     eps = []
@@ -301,16 +325,9 @@ def load(sources: list[tuple[str, str]], edits: dict[str, list[dict]] | None = N
         for line in (REPO / path).read_text().splitlines():
             if not line.strip():
                 continue
-            r = selected_recording(json.loads(line))
+            r = prepare_row(json.loads(line))
             if r is None:
                 continue
-            if r["episode_uid"].startswith("pantheon/"):
-                native = json.loads(Path(r["source_annotation"]).read_text())
-                r = pantheon_annotations(r, native)
-                if r.get("split") is None:
-                    r = r | {"split": "unsplit", "task": " / ".join(native.get("task_label") or []) or r["instruction"],
-                             "original_caption": r.get("caption_original", ""),
-                             "format_status": "Format corrected; human review pending"}
             if r.get("split") not in KEEP_SPLITS:
                 continue
             ds = dataset_of(dataset, r)
@@ -345,7 +362,8 @@ def clean_edit(e: dict, body: dict) -> dict:
     Times snap to 0.1 s, the caption format's resolution. Sub-tasks stay inside the video and
     do not overlap (gaps are fine). Atomic lines keep the training invariants -- contiguous from
     0 to the end of the video, canonical hand labels -- when the manifest row met them; a row
-    that never did (EgoDex test still carries [ego]) is held to the timing ones only."""
+    that never did (EgoDex test still carries [ego]) is held to the timing ones only.
+    Native review events retain gaps, overlaps, decimal precision and absent instructions."""
     dur = e["duration"]
     review_flag = body.get("review_flag", e.get("review_flag", False))
     if type(review_flag) is not bool:
@@ -366,21 +384,27 @@ def clean_edit(e: dict, body: dict) -> dict:
         crop = {"start": float(a), "end": float(b)}
         if a == 0 and b == dur:
             crop = None
+    native_events = e["row"].get("review_events")
     ins = " ".join(str(body.get("instruction") or "").split())
-    if not ins:
+    if not ins and not (native_events and not e["row"].get("instruction")):
         raise ValueError("the instruction is empty")
 
     def cues(items, level):
         out = []
         precision = 3 if level == "sub-task" and e["row"].get("subtask_source") else 1
-        overlap = level == "sub-task" and e["row"].get("subtask_source") == "Pantheon task segments"
+        overlap = native_events or (level == "sub-task" and e["row"].get("subtask_source") == "Pantheon task segments")
+        source_level = "L2" if level == "sub-task" else "L3.5"
+        source_times = {(c["start"], c["end"]) for c in native_events or [] if c["level"] == source_level}
         for k, c in enumerate(items or []):
-            a, b = round(float(c["start"]), precision), round(float(c["end"]), precision)
+            a, b = float(c["start"]), float(c["end"])
+            if not native_events:
+                a, b = round(a, precision), round(b, precision)
             t = " ".join(str(c.get("text") or "").split())
             where = f"{level} {k + 1}"
             if not t:
                 raise ValueError(f"{where}: empty text")
-            if not 0 <= a < b <= dur + 1e-6:
+            existing_boundary = (a, b) in source_times and 0 <= a < b <= dur + 0.05
+            if not 0 <= a < b <= dur + 1e-6 and not existing_boundary:
                 raise ValueError(f"{where}: {a:.1f}-{b:.1f} s is empty or outside the video (0-{dur:.1f} s)")
             if out and (a < out[-1][0] - 1e-6 or (not overlap and a < out[-1][1] - 1e-6)):
                 raise ValueError(f"{where} starts before {level} {k} ends")
@@ -389,26 +413,47 @@ def clean_edit(e: dict, body: dict) -> dict:
 
     subs = cues(body.get("subtasks"), "sub-task")
     atoms = cues(body.get("atomic"), "atomic line")
-    strict = _valid(parse_cues(e["row"]["caption"]), dur)
+    strict = not native_events and _valid(parse_cues(e["row"]["caption"]), dur)
     if strict:
         atoms = [(a, b, normalize_line(t)) for a, b, t in atoms]
-    try:
-        assert_valid(atoms if strict else [(a, b, "[both hands] x") for a, b, _ in atoms], dur)
-    except AssertionError as err:
-        raise ValueError(f"atomic lines: {str(err).replace('cue ', 'line ')}") from None
-    subtask = "\n".join(f"[{a:.3f} - {b:.3f}] {text}" for a, b, text in subs) if e["row"].get("subtask_source") else fmt_cues(subs)
-    return {"instruction": ins, "subtask": subtask, "caption": fmt_cues(atoms),
+    if native_events:
+        if not atoms:
+            raise ValueError("atomic lines: empty caption")
+    else:
+        try:
+            assert_valid(atoms if strict else [(a, b, "[both hands] x") for a, b, _ in atoms], dur)
+        except AssertionError as err:
+            raise ValueError(f"atomic lines: {str(err).replace('cue ', 'line ')}") from None
+    native_cues = lambda track: "\n".join(f"[{a} - {b}] {text}" for a, b, text in track)
+    if native_events:
+        subtask = native_cues(subs)
+    elif e["row"].get("subtask_source"):
+        subtask = "\n".join(f"[{a:.3f} - {b:.3f}] {text}" for a, b, text in subs)
+    else:
+        subtask = fmt_cues(subs)
+    return {"instruction": ins, "subtask": subtask, "caption": native_cues(atoms) if native_events else fmt_cues(atoms),
             "review_flag": review_flag, "review_reason": review_reason, "crop": crop}
 
 
-def export(sources: list[tuple[str, str]], edits: dict[str, list[dict]], out_dir: Path) -> None:
-    """Every source manifest -> out_dir/<same path> with the edits in force applied."""
+def export_path(path: str) -> Path:
+    relative = Path(path)
+    if '..' in relative.parts:
+        raise ValueError('Export source must not contain parent traversal')
+    return Path('external') / relative.relative_to(relative.anchor) if relative.is_absolute() else relative
+
+
+def export(sources: list[tuple[str, str]], edits: dict[str, list[dict]], out_dir: Path,
+           source_files: dict[str, Path] | None = None) -> None:
+    """Apply edits using the same row preparation and IDs as playback; contain all outputs."""
     for dataset, path in sources:
         rows, n = [], 0
-        for line in (REPO / path).read_text().splitlines():
+        source = source_files[path] if source_files is not None else REPO / path
+        for line in source.read_text().splitlines():
             if not line.strip():
                 continue
-            r = json.loads(line)
+            r = prepare_row(json.loads(line))
+            if r is None:
+                continue
             live = latest(edits.get(eid(dataset_of(dataset, r), r), []), path)
             if live:
                 r = r | {k: live[k] for k in LEVELS} | {"before_edit": {k: r.get(k, "") for k in LEVELS},
@@ -419,7 +464,7 @@ def export(sources: list[tuple[str, str]], edits: dict[str, list[dict]], out_dir
                       "video_crop_timestamp_origin": "episode", "training_ready": not live.get("review_flag", False)}
                 n += 1
             rows.append(json.dumps(r))
-        out = out_dir / path
+        out = out_dir / export_path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text("\n".join(rows) + "\n")
         print(f"{out}: {n} of {len(rows)} rows edited")

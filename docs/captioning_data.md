@@ -129,6 +129,14 @@ sudo DATASETS_REPO=/home/tho2/VR-finetune-VLM \
 
 `DATASETS_REPO` selects the VR-finetune-VLM data/helper checkout. Installation copies `viewer/` and snapshots imported helpers. In the installed service, `DATASETS_REPO` points to that code snapshot; `--data-root` selects the actual dataset.
 
+`dataset_sources.json` ships with each release and supplies the same sources for serving and training export:
+
+- `data/splits/{train,val,test}.jsonl`: EgoVerse and EgoDex.
+- `/mnt/SSD4/tho2/dataset/EgoExoLearn/preprocessed/review/recordings.jsonl`: 183 selected egocentric full recordings, using chosen annotation events and original video timestamps.
+- `data/pantheon/corrector/v4/all/formatted.jsonl`: 1,987 format-corrected Pantheon episodes. Dataset choices retain the local names: Molmo, ABC130K, Galaxea, OpenAoE, Egocentric100K, GenHumanEgo. Their split is `unsplit`; training eligibility is unchanged.
+
+Relative paths resolve under `--data-root`. The service user must also read external manifests, referenced videos, and Pantheon `source_annotation` files. Installation validates sources and existing correction hashes before replacing the service. To browse unassigned datasets, switch the assignment filter to **All episodes**; existing EgoVerse assignments are preserved.
+
 The installer:
 
 1. Copies frontend, adapter, and imported viewer code into `/var/www/project1b-internal/releases/`.
@@ -353,11 +361,13 @@ sudo -u tho2 env DATASETS_REPO=/var/www/project1b-internal/current/service \
   --export "/mnt/SSD5/captioning_data-snapshots/$snapshot_name"
 ```
 
-Export requires a new destination. It captures committed history under a file lock, copies manifests into a private temporary package, applies active corrections, syncs files, and publishes atomically. Corrupt history and source drift cause export to fail.
+Export requires a new destination. It captures committed history under a file lock, stages source manifests privately, applies active corrections, syncs files, and publishes atomically. Corrupt history and source drift cause export to fail. Export uses the same selected events, Pantheon subtask preparation, and episode IDs as playback.
 
 The package contains:
 
 - `data/splits/train.jsonl`, `val.jsonl`, `test.jsonl`: full manifests with active corrections applied.
+- `data/pantheon/corrector/v4/all/formatted.jsonl`: Pantheon captions with active corrections applied.
+- `external/mnt/SSD4/tho2/dataset/EgoExoLearn/preprocessed/review/recordings.jsonl`: selected EgoExoLearn recordings with active corrections applied. Absolute sources are exported beneath `external/`; original files are never overwritten.
 - `annotation_edits.jsonl`: the complete captured audit history, including resets.
 - `snapshot.json`: creation time, source hashes, exported-file hashes, history count, and legacy records without source hashes.
 
@@ -398,7 +408,7 @@ Before replacing source manifests or videos:
 
 Do not clear history or bypass source validation. Stored original/before snapshots preserve comparisons; applying old corrections to new sources still requires reconciliation.
 
-Custom source manifests can be served by the adapter's repeated `--source DATASET=MANIFEST` options. The installer configures the three standard split files; a custom-source systemd setup needs corresponding reviewed arguments and matching arguments on every export. Avoid one-off service changes that a later installer run would overwrite.
+Maintain production sources in the reviewed `dataset_sources.json` and rerun the installer. Each entry is `["DATASET", "MANIFEST"]`; an empty dataset name uses each row's dataset. Repeated `--source DATASET=MANIFEST` arguments override that complete list for a one-off run; pass identical overrides when exporting. Mock preview keeps its three standard split fixtures.
 
 ## 11. Operate, update, and recover
 

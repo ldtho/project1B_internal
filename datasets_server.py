@@ -64,21 +64,22 @@ def export_training(data_root: Path, edits: Path, output: Path, sources=None):
         audit = package / 'annotation_edits.jsonl'
         audit.write_bytes(snapshot)
         records = datasets.read_edits(audit)  # Corrupt/truncated history aborts export.
-        inputs, hashes = root / 'inputs', {}
+        inputs, hashes, source_files = root / 'inputs', {}, {}
         for _, source in sources:
             relative = Path(source)
-            if relative.is_absolute() or '..' in relative.parts:
-                raise ValueError('Export source must be relative to data root')
-            content = (data_root / relative).read_bytes()
+            if '..' in relative.parts:
+                raise ValueError('Export source must not contain parent traversal')
+            content = (data_root / source).read_bytes()
             hashes[source] = checksum(content)
-            target = inputs / relative
+            target = inputs / datasets.export_path(source)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
+            source_files[source] = target
         validate_sources(records, hashes)
         original_root = datasets.REPO
         try:
             datasets.REPO = inputs
-            datasets.export(sources, records, package)
+            datasets.export(sources, records, package, source_files)
         finally:
             datasets.REPO = original_root
         files = {str(path.relative_to(package)): checksum(path.read_bytes())
@@ -279,7 +280,7 @@ def main():
     parser.add_argument('--auth-port', type=int, default=8903)
     parser.add_argument('--origin', default=Handler.origin)
     args = parser.parse_args()
-    sources = [tuple(s.split('=', 1)) for s in args.source] if args.source else None
+    sources = [tuple(s.split('=', 1)) for s in args.source] if args.source else json.loads((HERE / 'dataset_sources.json').read_text())
     if args.export:
         export_training(args.data_root.resolve(), args.edits, args.export, sources)
         print(f'Training snapshot: {args.export.resolve()}')

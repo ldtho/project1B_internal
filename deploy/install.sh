@@ -99,6 +99,7 @@ done
 install -d -m 755 "$release/web"
 install -m 644 "$repo/web/datasets-auth.js" "$release/web/datasets-auth.js"
 install -m 644 "$repo/datasets_server.py" "$release/datasets_server.py"
+install -m 644 "$repo/dataset_sources.json" "$release/dataset_sources.json"
 install -d -m 755 "$release/viewer"
 install -m 644 "$repo/viewer/server.py" "$release/viewer/server.py"
 install -m 644 "$repo/viewer/index.html" "$release/viewer/index.html"
@@ -129,6 +130,17 @@ if [[ ! -e $datasets_state/annotation_edits.jsonl ]]; then
     if [[ ! -f $initial_edits ]]; then initial_edits=/dev/null; fi
     install -m 600 -o "$datasets_user" "$initial_edits" "$datasets_state/annotation_edits.jsonl"
 fi
+runuser -u "$datasets_user" -- env DATASETS_REPO="$release/service" PYTHONDONTWRITEBYTECODE=1 \
+    "$datasets_python" - "$release" "$datasets_root" "$datasets_state/annotation_edits.jsonl" <<'PYTHON'
+import json
+import sys
+from pathlib import Path
+release, data_root, edits = map(Path, sys.argv[1:])
+sys.path.insert(0, str(release))
+from datasets_server import configure, Handler
+configure(data_root, edits, json.loads((release / 'dataset_sources.json').read_text()))
+print(f'Dataset preflight: {len(Handler.by_uid)} episodes; source hashes and history validated')
+PYTHON
 cat > "$service" <<UNIT
 # Project1B dataset viewer — managed by project1B_internal/deploy/install.sh.
 [Unit]
