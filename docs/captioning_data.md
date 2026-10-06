@@ -132,7 +132,7 @@ sudo DATASETS_REPO=/home/tho2/VR-finetune-VLM \
 `dataset_sources.json` ships with each release and supplies the same sources for serving and training export:
 
 - `data/splits/{train,val,test}.jsonl`: EgoVerse and EgoDex.
-- `/mnt/SSD4/tho2/dataset/EgoExoLearn/preprocessed/review/recordings.jsonl`: 183 selected egocentric full recordings, using chosen annotation events and original video timestamps.
+- `/mnt/SSD4/tho2/dataset/EgoExoLearn/selections/coverage90/preprocessed/review/recordings.jsonl`: 73 selected egocentric full recordings (19.24 hours), each with at least 90% retained fine-caption temporal coverage. Uses chosen annotation events and original video timestamps.
 - `data/pantheon/corrector/v4/all/formatted.jsonl`: 1,987 format-corrected Pantheon episodes. Dataset choices retain the local names: Molmo, ABC130K, Galaxea, OpenAoE, Egocentric100K, GenHumanEgo. Their split is `unsplit`; training eligibility is unchanged.
 
 Relative paths resolve under `--data-root`. The service user must also read external manifests, referenced videos, and Pantheon `source_annotation` files. Installation validates sources and existing correction hashes before replacing the service. To browse unassigned datasets, switch the assignment filter to **All episodes**; existing EgoVerse assignments are preserved.
@@ -402,7 +402,7 @@ The package contains:
 
 - `data/splits/train.jsonl`, `val.jsonl`, `test.jsonl`: full manifests with active corrections applied.
 - `data/pantheon/corrector/v4/all/formatted.jsonl`: Pantheon captions with active corrections applied.
-- `external/mnt/SSD4/tho2/dataset/EgoExoLearn/preprocessed/review/recordings.jsonl`: selected EgoExoLearn recordings with active corrections applied. Absolute sources are exported beneath `external/`; original files are never overwritten.
+- `external/mnt/SSD4/tho2/dataset/EgoExoLearn/selections/coverage90/preprocessed/review/recordings.jsonl`: selected EgoExoLearn recordings with active corrections applied. Absolute sources are exported beneath `external/`; original files are never overwritten.
 - `annotation_edits.jsonl`: the complete captured audit history, including resets.
 - `snapshot.json`: creation time, source hashes, exported-file hashes, history count, and legacy records without source hashes.
 

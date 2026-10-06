@@ -2,6 +2,6 @@
   ["", "data/splits/train.jsonl"],
   ["", "data/splits/val.jsonl"],
   ["", "data/splits/test.jsonl"],
-  ["EgoExoLearn", "/mnt/SSD4/tho2/dataset/EgoExoLearn/preprocessed/review/recordings.jsonl"],
+  ["EgoExoLearn", "/mnt/SSD4/tho2/dataset/EgoExoLearn/selections/coverage90/preprocessed/review/recordings.jsonl"],
   ["", "data/pantheon/corrector/v4/all/formatted.jsonl"]
 ]
