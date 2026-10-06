@@ -415,6 +415,10 @@
       editor to its sub-task, then instruction; missing sub-tasks are skipped. <kbd>Enter</kbd> or <kbd>Esc</kbd> leaves the text field.
       Seeking or resuming playback restores the caption at the playhead.</li>
   </ul>
+  <p>In a caption text field, type <kbd>lh</kbd>, <kbd>rh</kbd>, or <kbd>bh</kbd> followed by Space to insert
+    <b>[left hand]</b>, <b>[right hand]</b>, or <b>[both hands]</b>. <kbd>Shift+Delete</kbd> clears the phrase belonging to
+    the tag at the cursor; press again to remove the empty tag. <b>Swap hands</b> or <kbd>Alt+S</kbd> exchanges left/right
+    hand tags; both-hands captions stay unchanged. Each action supports undo and remains a draft until saved.</p>
   <h4>Filters and flags</h4>
   <ul>
     <li>Combine dataset, split, task, scene, annotation-level and flag filters to narrow the episode list.
@@ -531,6 +535,18 @@ const store = (k, v) => { try { return v === undefined ? localStorage.getItem(k)
 // mark = outline a tag that appears more than once (a merge leaves them; one clause per hand is the target)
 const TAG = /\[(left|right|both) hands?\]|\[ego\]/g;
 const tagCount = t => { const n = {}; for (const m of t.matchAll(TAG)) n[m[0]] = (n[m[0]] || 0) + 1; return n; };
+const swapHands = text => text.replace(/\[(left|right) hands?\]/gi, (_, hand) => `[${hand.toLowerCase() === 'left' ? 'right' : 'left'} hand]`);
+const deleteHandPhrase = (text, cursor) => {
+  const tags = [...text.matchAll(TAG)], index = tags.findLastIndex(tag => tag.index <= cursor);
+  if (index < 0) return null;
+  const tag = tags[index], next = tags[index + 1], end = next?.index ?? text.length;
+  const tagEnd = tag.index + tag[0].length;
+  if (text.slice(tagEnd, end).replace(/\s*\|\s*$/, '').trim())
+    return { text: text.slice(0, tagEnd) + (next ? ' | ' : ' ') + text.slice(end), cursor: tagEnd + 1 };
+  const before = text.slice(0, tag.index).replace(/\s*\|\s*$/, '').trimEnd(), after = text.slice(end).trimStart();
+  const separator = before && after ? ' | ' : '';
+  return { text: before + separator + after, cursor: before.length + separator.length };
+};
 const hands = (t, mark) => { const n = mark ? tagCount(t) : {};
   return esc(t).replace(TAG, (m, h) => `<span class="hand ${h ? h[0] : 'e'}${n[m] > 1 ? ' dup' : ''}">${h ? (h === 'both' ? 'both' : h) : 'ego'}</span>`)
     .replace(/ \| /g, ' &nbsp; '); };
@@ -1038,6 +1054,7 @@ function renderView(e, d, t0, sel0) {
              ${EDIT ? '<input class="selin ptx" id="selParentIn">' : '<span class="ptx" id="selPx"></span>'}<span class="flg" id="selPf"></span></div>`}
            <div class="selrow me ${lvl}">
              <div class="selhd"><span class="chip ${lvl}">${lineName(s.l, s.k)}</span><span class="t" id="selT"></span>${EDIT ? `<span class="sp"></span>
+               ${s.l === 'atoms' ? '<button class="act" data-op="swap" aria-keyshortcuts="Alt+S" title="Swap left/right hand captions (Alt+S)">Swap hands</button>' : ''}
                ${s.l === 'ins' ? '' : `<button class="act" data-op="add" id="selAdd">+ Add caption</button>
                <button class="act" data-op="merge" id="selMerge" title="merge with the next caption, texts included (⇧M)">⇆ Merge</button>
                <button class="act del" data-op="del" title="delete; its time stays a gap (⌫)">× Delete</button>`}` : ''}</div>
@@ -1226,6 +1243,13 @@ function renderView(e, d, t0, sel0) {
   // one edit op on line k of level l ('subs' | 'atoms'); the row buttons and the keys both land here
   const run = (op, l, k) => {
     if (op === 'sugg-ins') { saveState(); EDIT.ins = d.check.task.new; return changed(); }
+    if (op === 'swap') {
+      const text = l === 'ins' ? EDIT.ins : EDIT[l][k].text, swapped = swapHands(text);
+      if (swapped === text) return msg('No left/right hand tags in this caption.');
+      saveState(); EDIT.typing = false;
+      if (l === 'ins') EDIT.ins = swapped; else EDIT[l][k].text = swapped;
+      return changed();
+    }
     const arr = EDIT[l], x = arr[k], t = now(), name = lineName(l, k);
     if (op === 'go') { v.currentTime = x.start; v.play().catch(() => {}); return; }
     if (op === 'sugg') { saveState(); x.text = x.check.new; return changed(); }
@@ -1639,6 +1663,14 @@ function renderView(e, d, t0, sel0) {
   $('#next').addEventListener('click', () => step(1));
   $('#rand').addEventListener('click', random);
   $('.title h2').addEventListener('click', () => { $('#q').value = e.task; search(); });
+  const replaceCaptionInput = (input, text, cursor) => {
+    if (text === input.value) return;
+    saveState(); EDIT.typing = true;
+    input.value = text;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    EDIT.typing = false;
+    input.focus(); input.setSelectionRange(cursor, cursor);
+  };
   // Edit-mode keys, after the review editor's; the document handler asks this first.
   EDITKEY = ev => {
     if (ev.isComposing) return false;
@@ -1650,6 +1682,28 @@ function renderView(e, d, t0, sel0) {
       if (!inp && !mod && !ev.altKey && !ev.target.matches('button') && (key === 'Enter' || key === 'ArrowUp'))
         return done(() => editCurrentCaption(key === 'ArrowUp'));
       return false;
+    }
+    const textInput = inp?.matches('.tx, .selin') && !inp.readOnly ? inp : null;
+    if (!mod && ev.altKey && (key === 's' || ev.code === 'KeyS') && (!inp || textInput)) return done(() => {
+      if (ev.repeat) return;
+      if (textInput) return replaceCaptionInput(textInput, swapHands(textInput.value), textInput.selectionStart);
+      const caption = panelCaption();
+      if (caption) run('swap', caption.l, caption.k);
+    });
+    if (textInput && !mod && !ev.altKey) {
+      if (key === 'Delete' && ev.shiftKey) return done(() => {
+        if (ev.repeat) return;
+        const replacement = deleteHandPhrase(textInput.value, textInput.selectionStart);
+        if (replacement) replaceCaptionInput(textInput, replacement.text, replacement.cursor);
+      });
+      if (key === ' ' && !ev.shiftKey && textInput.selectionStart === textInput.selectionEnd) {
+        const cursor = textInput.selectionStart, match = textInput.value.slice(0, cursor).match(/(?:^|[\s|])(lh|rh|bh)$/i);
+        if (match) return done(() => {
+          const hand = { lh: 'left hand', rh: 'right hand', bh: 'both hands' }[match[1].toLowerCase()];
+          const prefix = textInput.value.slice(0, cursor - 2) + `[${hand}] `;
+          replaceCaptionInput(textInput, prefix + textInput.value.slice(cursor), prefix.length);
+        });
+      }
     }
     if (mod && key === 'z') return done(() => ev.shiftKey ? undo(EDIT.redo, EDIT.undo, 'redo') : undo(EDIT.undo, EDIT.redo, 'undo'));
     if (mod && key === 'y') return done(() => undo(EDIT.redo, EDIT.undo, 'redo'));
@@ -1685,6 +1739,7 @@ function renderView(e, d, t0, sel0) {
       k < 0 ? msg(`the playhead is not inside a ${l === 'subs' ? 'sub-task' : 'atomic line'}`, true) : run('cut', l, k);
     });
     if (key === 'a') return done(() => need(k => run('add', l, k)));
+    if (key === 'Delete' && ev.shiftKey) return done(() => msg('Place the cursor inside a hand-tag phrase first.', true));
     if (key === 'Backspace' || key === 'Delete') return done(() => need(k => run('del', l, k)));
     if (key === 'm' && ev.shiftKey) return done(() => need(k => run('merge', l, k)));
     if (key === 'Enter' || key === 'ArrowUp') return done(() => editCurrentCaption(key === 'ArrowUp'));

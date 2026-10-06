@@ -324,6 +324,8 @@ Keyboard shortcuts (outside text/time fields): **Space** pauses/resumes video. I
 
 Click a caption in the timeline or table to edit that caption in the selected annotation area. **Enter** pauses playback, enables Edit mode if needed, and focuses that editor. **Up** moves it from atomic to sub-task to instruction, skipping missing sub-tasks. Instruction text is editable. **Enter/Escape** leaves the text field; scrubbing or resuming playback restores the caption at the playhead. Up/Down in table time fields still adjusts timing.
 
+In caption text fields, type **lh**, **rh**, or **bh** followed by **Space** to insert `[left hand]`, `[right hand]`, or `[both hands]`. **Shift+Delete** clears the phrase belonging to the tag at the cursor; pressing it again removes the empty tag and adjoining separator. **Swap hands** or **Alt+S** exchanges left/right tags for the focused caption, or the selected caption when outside a text field; `[both hands]` stays unchanged. These actions update the timeline, video and comparison immediately, support undo, and remain drafts until saved.
+
 Save without semantic changes marks a sample **confirmed**; a changed save marks it **corrected**. These are QA states, not separate administrator approvals.
 Before/after history includes flags, reasons, and crop ranges. Reset restores original captions, removes the crop and review flag, and retains saved revisions.
 
