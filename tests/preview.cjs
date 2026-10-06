@@ -771,7 +771,9 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.equal(await page.evaluate(() => !!window.captionCompareUnsafe), false);
   if (initial.subtasks.length) await page.locator('#levels tr[data-l="subs"][data-k="0"] input.tx').focus();
   else await page.locator('#levels tr[data-l="atoms"][data-k="0"] input.tx').focus();
-  await page.locator('#selParentIn').fill('Local preview correction');
+  await page.locator('#selParentIn').fill('  Local   preview correction...  ');
+  await page.locator('#levels tr[data-l="subs"][data-k="0"] input.tx').fill('  Lift   cup... ');
+  await page.locator('#levels tr[data-l="atoms"][data-k="0"] input.tx').fill(' [left hand] hold  cup. [right hand] lift lid... ');
   assert.equal(await page.locator('#cmpAfter option[value="current"]').textContent(), 'Unsaved draft');
   await page.locator('#cmpBefore').selectOption('previous');
   assert.match(await page.locator('#cmpMeta').innerText(), /before selected change/i);
@@ -816,6 +818,11 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   lastTestVersion = version + 1;
   const records = fs.readFileSync(path.join(state, 'edits.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
   assert.equal(records.at(-1).editor_id, 'mock-worker'); assert.equal(records.at(-1).instruction, 'Local preview correction');
+  assert.match(records.at(-1).subtask.split('\n')[0], /\] Lift cup$/);
+  assert.match(records.at(-1).caption.split('\n')[0], /\] \[left hand\] hold cup \| \[right hand\] lift lid$/);
+  assert.equal(await page.locator('input[data-l="ins"]').inputValue(), 'Local preview correction');
+  assert.equal(await page.locator('#levels tr[data-l="subs"][data-k="0"] input.tx').inputValue(), 'Lift cup');
+  assert.equal(await page.locator('#levels tr[data-l="atoms"][data-k="0"] input.tx').inputValue(), '[left hand] hold cup | [right hand] lift lid');
   assert.deepEqual(records.at(-1).editor_roles, ['worker']);
   assert.equal(records.at(-1).version, version + 1); assert.match(records.at(-1).source_sha256, /^[a-f0-9]{64}$/);
   assert.deepEqual(records.at(-1).before, captionState(initial));

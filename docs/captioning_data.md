@@ -343,6 +343,8 @@ To change one phrase's tag, place the cursor inside it and press **Alt/Option+L*
 
 Hand edits update the timeline, video and comparison immediately, support **Ctrl/Cmd+Z** undo, and remain drafts until saved. **Ctrl/Cmd+S** saves the episode.
 
+On save, caption text uses one space between words, ` | ` between hand-tag phrases, and no trailing periods on each phrase. Recognized hand tags use their standard spelling. Internal sentence punctuation and decimal points stay intact. Cleanup covers instructions, subtasks and atomic captions; original text remains in before/after history. Formatting-only changes count as **confirmed**.
+
 Save without semantic changes marks a sample **confirmed**; a changed save marks it **corrected**. These are QA states, not separate administrator approvals.
 Before/after history includes flags, reasons, and crop ranges. Reset restores original captions, removes the crop and review flag, and retains saved revisions.
 

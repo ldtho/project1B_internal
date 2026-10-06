@@ -187,11 +187,13 @@ def qa_status(r: dict, live: dict | None) -> str | None:
         return None
     if live.get("crop"):
         return "corrected"
-    cue = lambda k: [{"start": a, "end": b, "text": t} for a, b, t in parse_cues(r.get(k) or "")]  # noqa: E731
+    cue = lambda v, k: [{"start": a, "end": b, "text": t} for a, b, t in parse_cues(v.get(k) or "")]  # noqa: E731
+    def cleaned(v):
+        return clean_edit({"duration": float(r["duration_s"]), "row": r},
+                          {"instruction": v.get("instruction"), "subtasks": cue(v, "subtask"), "atomic": cue(v, "caption")})
     try:
-        original = clean_edit({"duration": float(r["duration_s"]), "row": r},
-                              {"instruction": r.get("instruction"), "subtasks": cue("subtask"), "atomic": cue("caption")})
-        same = {k: original[k] for k in LEVELS} == {k: live[k] for k in LEVELS}
+        original, current = cleaned(r), cleaned(live)
+        same = {k: original[k] for k in LEVELS} == {k: current[k] for k in LEVELS}
     except ValueError:
         same = False
     return "confirmed" if same else "corrected"
@@ -357,6 +359,17 @@ def _valid(cues, duration) -> bool:
         return False
 
 
+def format_caption(text: str) -> str:
+    """Normalize caption formatting without changing actions or assigning hand labels."""
+    text = " ".join(str(text or "").split())
+    names = {"left": "left hand", "right": "right hand", "both": "both hands", "ego": "ego"}
+    text = re.sub(r"\[(?:(left|right|both) hands?|ego)\]\s*",
+                  lambda m: f"[{names[(m[1] or 'ego').lower()]}] ", text, flags=re.I)
+    parts = re.split(r"\s*\|+\s*|(?=\[(?:left hand|right hand|both hands|ego)\])", text)
+    parts = [part.strip().rstrip(". ") for part in parts]
+    return " | ".join(part for part in parts if part)
+
+
 def clean_edit(e: dict, body: dict) -> dict:
     """The POSTed levels -> the manifest fields they replace; ValueError names the first problem.
     Times snap to 0.1 s, the caption format's resolution. Sub-tasks stay inside the video and
@@ -385,7 +398,7 @@ def clean_edit(e: dict, body: dict) -> dict:
         if a == 0 and b == dur:
             crop = None
     native_events = e["row"].get("review_events")
-    ins = " ".join(str(body.get("instruction") or "").split())
+    ins = format_caption(body.get("instruction"))
     if not ins and not (native_events and not e["row"].get("instruction")):
         raise ValueError("the instruction is empty")
 
@@ -399,7 +412,7 @@ def clean_edit(e: dict, body: dict) -> dict:
             a, b = float(c["start"]), float(c["end"])
             if not native_events:
                 a, b = round(a, precision), round(b, precision)
-            t = " ".join(str(c.get("text") or "").split())
+            t = format_caption(c.get("text"))
             where = f"{level} {k + 1}"
             if not t:
                 raise ValueError(f"{where}: empty text")
