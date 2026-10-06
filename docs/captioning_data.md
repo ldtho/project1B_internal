@@ -324,7 +324,19 @@ Keyboard shortcuts (outside text/time fields): **Space** pauses/resumes video. I
 
 Click a caption in the timeline or table to edit that caption in the selected annotation area. **Enter** pauses playback, enables Edit mode if needed, and focuses that editor. **Up** moves it from atomic to sub-task to instruction, skipping missing sub-tasks. Instruction text is editable. **Enter/Escape** leaves the text field; scrubbing or resuming playback restores the caption at the playhead. Up/Down in table time fields still adjusts timing.
 
-In caption text fields, type **lh**, **rh**, or **bh** followed by **Space** to insert `[left hand]`, `[right hand]`, or `[both hands]`. **Shift+Delete** clears the phrase belonging to the tag at the cursor; pressing it again removes the empty tag and adjoining separator. **Swap hands** or **Alt+S** exchanges left/right tags for the focused caption, or the selected caption when outside a text field; `[both hands]` stays unchanged. These actions update the timeline, video and comparison immediately, support undo, and remain drafts until saved.
+Hand editing shortcuts in caption text fields:
+
+| Shortcut | Action |
+| --- | --- |
+| **lh + Space** | Insert `[left hand]`. |
+| **rh + Space** | Insert `[right hand]`. |
+| **bh + Space** | Insert `[both hands]`. |
+| **Shift+Delete** | Clear the phrase belonging to the tag at the cursor; press again to remove the empty tag and adjoining separator. |
+| **Alt+S** / **Swap hands** | Exchange left/right tags across the focused caption, or the selected caption when outside a text field. Keep `[both hands]` unchanged. |
+
+To change one phrase's tag, select the whole tag, including brackets, and type **lh**, **rh**, or **bh** followed by **Space**. The phrase text stays intact. **Alt+L/R/B** for changing only the tag at the cursor are proposed, not implemented.
+
+Hand edits update the timeline, video and comparison immediately, support **Ctrl/Cmd+Z** undo, and remain drafts until saved. **Ctrl/Cmd+S** saves the episode.
 
 Save without semantic changes marks a sample **confirmed**; a changed save marks it **corrected**. These are QA states, not separate administrator approvals.
 Before/after history includes flags, reasons, and crop ranges. Reset restores original captions, removes the crop and review flag, and retains saved revisions.
