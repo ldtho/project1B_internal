@@ -127,6 +127,8 @@
   .selhd .act.del:hover:not(:disabled) { background:#fef2f2; border-color:var(--bad); color:var(--bad); }
   .selin { width:100%; font:inherit; font-size:14px; padding:4px 8px; border:1px solid #cbd2da; border-radius:5px; background:#fff; color:var(--fg); }
   .selin:focus { outline:none; border-color:var(--acc); box-shadow:0 0 0 3px var(--acc-bg); }
+  .selrow.par:has(.selin) { padding-top:2px; padding-bottom:2px; }
+  .selrow.par .selin { font-size:12px; padding:0 6px; }
   .selin.dup { border-color:var(--bad); background:#fff7f7; }
   .seltx { font-size:14px; padding:1px 0; }
   .selrow .warn { margin-top:6px; font-size:12px; color:var(--bad); background:#fef2f2; border-radius:4px; padding:4px 8px; }
@@ -337,6 +339,8 @@
   .cmp-meta, .cmp-empty { color:var(--muted); font-size:13px; }
   .cmp-meta { margin:0 12px 12px; overflow-wrap:anywhere; }
   @media (max-width:700px) {
+    .selrow.par { flex-wrap:wrap; }
+    #selParentIn { flex-basis:100%; order:1; }
     .cmp-controls label { width:100%; }
     .cmp-content thead { display:none; }
     .cmp-content tr, .cmp-content td { display:block; width:auto; }
@@ -1031,7 +1035,7 @@ function renderView(e, d, t0, sel0) {
       const lvl = s && (s.l === 'ins' ? 'ins' : s.l === 'subs' ? 'sub' : 'atom');
       box.innerHTML = !s ? '<div class="hint">No caption at the playhead.</div>'
         : `<div class="selcard">${s.l === 'ins' ? '' : `<div class="selrow par" id="selP"><span class="chip" id="selPl"></span><span class="t" id="selPt"></span>
-             <span class="ptx" id="selPx"></span><span class="flg" id="selPf"></span></div>`}
+             ${EDIT ? '<input class="selin ptx" id="selParentIn">' : '<span class="ptx" id="selPx"></span>'}<span class="flg" id="selPf"></span></div>`}
            <div class="selrow me ${lvl}">
              <div class="selhd"><span class="chip ${lvl}">${lineName(s.l, s.k)}</span><span class="t" id="selT"></span>${EDIT ? `<span class="sp"></span>
                ${s.l === 'ins' ? '' : `<button class="act" data-op="add" id="selAdd">+ Add caption</button>
@@ -1051,7 +1055,13 @@ function renderView(e, d, t0, sel0) {
       $('#selP').className = `selrow par ${par[0]}`; $('#selPl').className = `chip ${par[0]}`; $('#selPl').textContent = par[1];
       $('#selPf').textContent = par[4] ? `⚑ ${par[4].error}` : '';
       $('#selPt').textContent = par[3] ? `${fmt(par[3].start)} – ${fmt(par[3].end)}` : '';
-      $('#selPx').textContent = $('#selPx').title = par[2];
+      if (EDIT) {
+        const parent = $('#selParentIn');
+        if (parent.value !== par[2]) parent.value = par[2];
+        parent.title = par[2]; parent.disabled = !par[3];
+        parent.dataset.l = j >= 0 ? 'subs' : 'ins'; parent.dataset.k = j >= 0 ? j : 0;
+        parent.setAttribute('aria-label', `Parent ${par[1]} caption`);
+      } else $('#selPx').textContent = $('#selPx').title = par[2];
       // Qwen's verdicts on the parent and on the selected sub-task, with the accept button in edit mode
       const sc = s.l === 'subs' ? x.check : null;
       $('#selChk').innerHTML = note(par[4], par[2], par[1], j >= 0 ? { l: 'subs', k: j } : { l: 'ins', k: 0 })
@@ -1303,17 +1313,19 @@ function renderView(e, d, t0, sel0) {
     if (b && EDIT && s) run(b.dataset.op, b.dataset.l || s.l, b.dataset.k === undefined ? s.k : +b.dataset.k);
   });
   $('#selbox').addEventListener('focusin', ev => {
-    if (EDIT && ev.target.id === 'selIn') {
+    if (EDIT && ['selIn', 'selParentIn'].includes(ev.target.id)) {
+      if (ev.target.id === 'selParentIn') v.pause();
       EDIT.typing = false;
       const s = panelCaption();
       if (s && s.l !== 'ins') select(s.l, s.k);
     }
   });
   $('#selbox').addEventListener('input', ev => {
-    const s = panelCaption(); if (!EDIT || !s || ev.target.id !== 'selIn') return;
+    const s = panelCaption(); if (!EDIT || !s || !['selIn', 'selParentIn'].includes(ev.target.id)) return;
     if (!EDIT.typing) { saveState(); EDIT.typing = true; }
-    if (s.l === 'ins') EDIT.ins = ev.target.value; else EDIT[s.l][s.k].text = ev.target.value;
-    const t = s.l === 'ins' ? $('#levels input[data-l="ins"]') : $(`#levels tr[data-l="${s.l}"][data-k="${s.k}"] input.tx`);
+    const l = ev.target.dataset.l || s.l, k = ev.target.dataset.k === undefined ? s.k : +ev.target.dataset.k;
+    if (l === 'ins') EDIT.ins = ev.target.value; else EDIT[l][k].text = ev.target.value;
+    const t = l === 'ins' ? $('#levels input[data-l="ins"]') : $(`#levels tr[data-l="${l}"][data-k="${k}"] input.tx`);
     if (t) t.value = ev.target.value;
     changed(false);
   });

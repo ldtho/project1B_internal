@@ -375,6 +375,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.evaluate(fixture => { EDIT = null; renderView(CUR, fixture, 0); }, qwenFixture);
   await page.locator('.tlbar label.switch').click();
   assert.equal(await page.locator('#selChk button').count(), 0);
+  assert.equal(await page.locator('#selParentIn').count(), 0);
   await page.locator('.tlbar label.switch').click();
   const parentFixture = { ...qwenFixture, subtasks: [
     { i: 0, start: 0, end: duration * 0.25, desc: 'First parent', check: { old: 'First parent', new: 'First parent suggestion', error: 'incorrect' } },
@@ -383,10 +384,49 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
   await page.locator('#levels tr[data-l="atoms"][data-k="1"] input.tx').focus();
   assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Second action');
+  assert.equal(await page.locator('#selParentIn').inputValue(), 'Second parent');
+  if (await page.locator('#captionCompare').isHidden()) await page.locator('#compareBtn').click();
+  await page.locator('#selParentIn').fill('Inline second parent');
+  await page.locator('#selParentIn').pressSequentially(' correction');
+  assert.equal(await page.locator('#selParentIn').evaluate(input => input === document.activeElement), true);
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Second action');
+  assert.equal(await page.evaluate(() => EDIT.subs[1].text), 'Inline second parent correction');
+  assert.equal(await page.evaluate(() => EDIT.subs[0].text), 'First parent');
+  assert.equal(await page.locator('#levels tr[data-l="subs"][data-k="1"] input.tx').inputValue(), 'Inline second parent correction');
+  assert.match(await page.locator('#laneSub [data-sub="1"]').innerText(), /Inline second parent correction/);
+  assert.ok(await page.evaluate(() => [...document.querySelector('video').textTracks[0].cues].some(cue => cue.text === 'Inline second parent correction')));
+  assert.match(await page.locator('#cmpContent').innerText(), /Inline second parent correction/);
+  assert.equal(await page.locator('#ovlSub').innerText(), 'First parent');
+  await page.keyboard.press('Control+z');
+  assert.equal(await page.locator('#selParentIn').inputValue(), 'Second parent');
+  await page.locator('video').focus(); await page.locator('#selParentIn').focus();
+  await page.keyboard.press('Space'); await page.keyboard.press('e'); await page.keyboard.press('p');
+  assert.equal(await page.locator('video').evaluate(video => video.paused), true);
+  assert.equal(await page.evaluate(() => EDIT.subs[1].start), duration * 0.25);
+  await page.keyboard.press('Control+z');
   await page.locator('#selChk button[data-op="sugg"][data-k="1"]').click();
   assert.equal(await page.evaluate(() => EDIT.subs[1].text), 'Second parent suggestion');
   assert.equal(await page.evaluate(() => EDIT.subs[0].text), 'First parent');
   assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Second action');
+  assert.equal(await page.locator('#selParentIn').inputValue(), 'Second parent suggestion');
+  await page.locator('#levels tr[data-l="subs"][data-k="0"] input.tx').focus();
+  assert.equal(await page.locator('#selParentIn').inputValue(), 'Instruction fixture');
+  await page.locator('#selParentIn').fill('Inline instruction correction');
+  assert.equal(await page.locator('#selIn').inputValue(), 'First parent');
+  assert.equal(await page.locator('#levels input[data-l="ins"]').inputValue(), 'Inline instruction correction');
+  assert.equal(await page.locator('#laneIns').innerText(), 'Inline instruction correction');
+  assert.ok(await page.evaluate(() => [...document.querySelector('video').textTracks[0].cues].some(cue => cue.text === 'Inline instruction correction')));
+  assert.match(await page.locator('#cmpContent').innerText(), /Inline instruction correction/);
+  await page.keyboard.press('Control+z');
+  assert.equal(await page.locator('#selParentIn').inputValue(), 'Instruction fixture');
+  const parentSideOpen = await page.evaluate(() => !document.body.classList.contains('noside'));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => showSide(false));
+  assert.ok(await page.locator('#selParentIn').evaluate(input => input.getBoundingClientRect().width > 250));
+  assert.ok(await page.locator('#selbox').evaluate(card => card.scrollWidth <= card.clientWidth + 1));
+  await page.locator('#selbox').screenshot({ path: path.join(state, 'captioning-data-parent-editor-mobile.png') });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.evaluate(open => showSide(open), parentSideOpen);
   const selectionFixture = { ...fixture, subtasks: [
     { i: 0, start: 0, end: duration * 0.25, desc: 'Selected subtask fixture' },
     { i: 1, start: duration * 0.25, end: duration * 0.75, desc: 'Next subtask fixture' }] };
@@ -627,7 +667,9 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.locator('input[data-l="ins"]').fill('<img src=x onerror="window.captionCompareUnsafe=true">');
   assert.equal(await page.locator('#cmpContent img').count(), 0);
   assert.equal(await page.evaluate(() => !!window.captionCompareUnsafe), false);
-  await page.locator('input[data-l="ins"]').fill('Local preview correction');
+  if (initial.subtasks.length) await page.locator('#levels tr[data-l="subs"][data-k="0"] input.tx').focus();
+  else await page.locator('#levels tr[data-l="atoms"][data-k="0"] input.tx').focus();
+  await page.locator('#selParentIn').fill('Local preview correction');
   assert.equal(await page.locator('#cmpAfter option[value="current"]').textContent(), 'Unsaved draft');
   await page.locator('#cmpBefore').selectOption('previous');
   assert.match(await page.locator('#cmpMeta').innerText(), /before selected change/i);
@@ -764,7 +806,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     await page.keyboard.press('Control+z');
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: mock login/roles; reviewer QA hides admin rows/totals; assigned landing/reload and collapsed comparison defaults; real video; restored control order; caption settings size/width/background, wrapping, native cue width, persistence, dismissal and mobile bounds; selected annotation always visible; Qwen header saw sentence, unclipped desktop/mobile cards and visibility; Accept suggestion for subtask/instruction/parent, correct target, live sync, undo, draft-only and view-only behavior; manual timeline/table subtask selection, level-specific E/P, removed O; Enter/Up editing and live caption sync; caption drag, bounds, persistence, resize and F fullscreen; Space playback, trim/extend, undo and typing isolation; isolated corrections; before/after drafts, timing, text safety, saved/reverted history and responsive layout; admin navigation; logout.');
+  console.log('PASS: mock login/roles; reviewer QA hides admin rows/totals; assigned landing/reload and collapsed comparison defaults; real video; restored control order; caption settings size/width/background, wrapping, native cue width, persistence, dismissal and mobile bounds; selected annotation always visible; inline parent subtask/instruction editing, correct target, child preserved, live comparison/caption sync, undo, typing isolation, mobile field and saved history; Qwen header saw sentence, unclipped desktop/mobile cards and visibility; Accept suggestion for subtask/instruction/parent, correct target, live sync, undo, draft-only and view-only behavior; manual timeline/table subtask selection, level-specific E/P, removed O; Enter/Up editing and live caption sync; caption drag, bounds, persistence, resize and F fullscreen; Space playback, trim/extend, undo and typing isolation; isolated corrections; before/after drafts, timing, text safety, saved/reverted history and responsive layout; admin navigation; logout.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   try { if (restoreCaptions) await restoreCaptions(); }
   catch (error) { console.error(error); process.exitCode = 1; }
