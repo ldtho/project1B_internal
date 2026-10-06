@@ -23,6 +23,12 @@ for path in "$datasets_root" "$datasets_python"; do
     fi
 done
 id "$datasets_user" >/dev/null
+for binary in ffmpeg ffprobe; do
+    if ! command -v "$binary" >/dev/null; then
+        echo "$binary is required for H.264 playback copies; install ffmpeg before deployment." >&2
+        exit 1
+    fi
+done
 DATASETS_REPO="$datasets_root" "$datasets_python" "$repo/datasets_server.py" --help >/dev/null
 domain=internal.project1b.space
 available=/etc/nginx/sites-available/$domain

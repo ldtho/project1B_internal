@@ -12,7 +12,7 @@ track, a two-lane timeline and a nested list that follows playback.
   python -m data_prep.viz.datasets.server --selfcheck
 
 Rows keep their own `split` (only KEEP_SPLITS are shown) and, in the split files, their own `dataset`.
-Video bytes stream from the manifest paths (moved onto this node's VIDEO_ROOTS), nothing is copied.
+Source videos stay unchanged; EgoVerse and clip playback use private H.264 copies.
 
 Editing: the page's edit mode corrects the times and text of all three levels. A save
 never touches a manifest; it appends one row to --edits (who, when, and the episode's
@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import fcntl
 import hmac
 import hashlib
 import subprocess
@@ -483,31 +484,63 @@ def export(sources: list[tuple[str, str]], edits: dict[str, list[dict]], out_dir
         print(f"{out}: {n} of {len(rows)} rows edited")
 
 
-CLIP_LOCK = threading.Lock()
+TRANSCODE_SLOTS = threading.Semaphore(2)
 CLIP_CACHE = REPO / "data/viz_clips"
 
 
+def video_info(path: Path) -> dict:
+    result = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                             "stream=codec_name,width,height,avg_frame_rate,start_time,duration,nb_frames",
+                             "-of", "json", str(path)], check=True, capture_output=True, timeout=30)
+    return json.loads(result.stdout)["streams"][0]
+
+
 def playback_file(e: dict) -> Path:
-    """Clip-relative captions need a matching, lazily cached H.264 video."""
+    """Private H.264 playback copies; source videos and caption timestamps stay unchanged."""
     source = Path(e["video"])
-    if e.get("clip_start") is None:
+    full_egoverse = e.get("clip_start") is None and e.get("dataset", "").lower() == "egoverse"
+    if e.get("clip_start") is None and not full_egoverse:
         return source
-    a, b = float(e["clip_start"]), float(e["clip_end"])
-    if not 0 <= a < b:
+    a, b = (None, None) if full_egoverse else (float(e["clip_start"]), float(e["clip_end"]))
+    if not full_egoverse and not 0 <= a < b:
         raise ValueError("Invalid playback clip bounds")
-    key = hashlib.sha256(f"{source}:{source.stat().st_mtime_ns}:{a}:{b}:480".encode()).hexdigest()
+    stat = source.stat()
+    profile = "egoverse-h264-v1" if full_egoverse else "clip-480-v1"
+    key = hashlib.sha256(f"{source}:{stat.st_mtime_ns}:{stat.st_size}:{a}:{b}:{profile}".encode()).hexdigest()
     destination = CLIP_CACHE / f"{key}.mp4"
-    with CLIP_LOCK:
+    if destination.exists():
+        return destination
+    CLIP_CACHE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Per-file lock also coordinates preloading with requests from the running service.
+    with destination.with_suffix(".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
         if not destination.exists():
-            CLIP_CACHE.mkdir(parents=True, exist_ok=True)
             temporary = destination.with_suffix(".tmp.mp4")
             try:
-                subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-ss", str(a),
-                                "-i", str(source), "-t", str(b-a), "-an", "-vf", "scale=480:-2",
-                                "-c:v", "libx264", "-preset", "veryfast", "-crf", "25", "-threads", "2",
-                                "-movflags", "+faststart", str(temporary)],
-                               check=True, timeout=180, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-                temporary.replace(destination)
+                with TRANSCODE_SLOTS:
+                    original = video_info(source) if full_egoverse else None
+                    command = ["ffmpeg", "-nostdin", "-v", "error", "-y", "-threads", "2", "-filter_threads", "2"]
+                    if not full_egoverse:
+                        command += ["-ss", str(a)]
+                    command += ["-i", str(source)]
+                    command += ["-map", "0:v:0", "-map", "0:a?", "-c:a", "copy", "-fps_mode", "passthrough"] \
+                        if full_egoverse else ["-t", str(b-a), "-an", "-vf", "scale=480:-2"]
+                    command += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast",
+                                "-crf", "23" if full_egoverse else "25", "-g", "60", "-threads", "2",
+                                "-movflags", "+faststart", str(temporary)]
+                    subprocess.run(command, check=True, timeout=180,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                    if full_egoverse:
+                        converted = video_info(temporary)
+                        if converted["codec_name"] != "h264" or any(original[k] != converted[k] for k in
+                                ("width", "height", "avg_frame_rate", "nb_frames")) or any(
+                                abs(float(original[k]) - float(converted[k])) > 0.001 for k in ("start_time", "duration")):
+                            raise OSError("Playback conversion changed video frames or timing")
+                    current = source.stat()
+                    if (stat.st_mtime_ns, stat.st_size) != (current.st_mtime_ns, current.st_size):
+                        raise OSError("Source video changed during playback conversion")
+                    temporary.chmod(0o600)
+                    temporary.replace(destination)
             finally:
                 temporary.unlink(missing_ok=True)
     return destination
@@ -643,7 +676,7 @@ class Handler(inspect_server.Handler):
             try:
                 return self._serve_video(playback_file(e))
             except (OSError, subprocess.SubprocessError):
-                return self._send(503, b"Could not prepare this clip; retry or inspect server log", "text/plain")
+                return self._send(503, b"Could not prepare this video; retry or inspect server log", "text/plain")
         return self._send(404, b"not found", "text/plain")
 
     def do_POST(self):

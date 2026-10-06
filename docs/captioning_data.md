@@ -148,6 +148,20 @@ The installer:
 
 First install seeds history from `DATASETS_REPO/data/annotation_edits.jsonl` if present. Inspect it first to exclude mock/development corrections. Redeployment preserves production history.
 
+EgoVerse playback uses H.264 copies with metadata at the beginning of the file for faster startup and broad browser support. Copies preserve source resolution, frame rate, frame count and timestamps. Source videos, training exports and caption history stay unchanged. Copies live in `/var/lib/project1b-datasets/playback/` and survive redeployment; changed source files get new copies. FFmpeg and ffprobe are required. Clip-relative playback also uses this writable cache.
+
+Preload EgoVerse videos as the service user before reviewers use the new release:
+
+```bash
+DATASETS_REPO=/home/tho2/VR-finetune-VLM \
+  /home/tho2/miniconda3/bin/python3 datasets_server.py \
+  --data-root /home/tho2/VR-finetune-VLM \
+  --edits /var/lib/project1b-datasets/annotation_edits.jsonl \
+  --prepare-playback
+```
+
+Preloading uses two workers and does not read or modify correction history. Uncached videos are prepared when first opened, which adds a one-time delay. H.264 copies can be larger than HEVC sources. Video responses allow private browser caching with authentication and revalidation on every reuse; API and UI responses remain `no-store`.
+
 Verify after installation:
 
 ```bash

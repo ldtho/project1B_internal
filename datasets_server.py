@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie, CookieError
 from http.server import ThreadingHTTPServer
@@ -125,13 +126,31 @@ class Handler(datasets.Handler):
     origin = 'https://internal.project1b.space'
     write_failed = False
 
+    def send_response(self, code, message=None):
+        self._cache_video = urlsplit(self.path).path in ('/video', '/captioning_data/video') and code in (200, 206, 304)
+        super().send_response(code, message)
+
     def send_header(self, keyword, value):
         if keyword.lower() != 'cache-control':
             super().send_header(keyword, value)
 
     def end_headers(self):
-        super().send_header('Cache-Control', 'no-store')
+        # Cached video bytes still require authentication and revalidation on every reuse.
+        super().send_header('Cache-Control', 'private, no-cache, must-revalidate' if getattr(self, '_cache_video', False) else 'no-store')
         super().end_headers()
+
+    def _serve_video(self, path: Path):
+        try:
+            stat = path.stat()
+        except OSError:
+            return super()._serve_video(path)
+        etag = f'"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
+        tags = [tag.strip().removeprefix('W/') for tag in self.headers.get('If-None-Match', '').split(',')]
+        if etag in tags or '*' in tags:
+            return self._send(304, b'', 'video/mp4', [('ETag', etag)])
+        if self.headers.get('Range') and self.headers.get('If-Range', etag) != etag:
+            del self.headers['Range']
+        return super()._serve_video(path)
 
     def authenticate(self) -> bool:
         cookies = SimpleCookie()
@@ -255,6 +274,7 @@ class Handler(datasets.Handler):
 
 def configure(data_root: Path, edits: Path, sources=None):
     datasets.REPO = data_root
+    datasets.CLIP_CACHE = edits.parent / 'playback'
     sources = sources or datasets.SOURCES
     Handler.source_hashes = {source: checksum((data_root / source).read_bytes()) for _, source in sources}
     Handler.edit_log = edits
@@ -276,6 +296,7 @@ def main():
     parser.add_argument('--edits', type=Path, required=True)
     parser.add_argument('--source', action='append', metavar='DATASET=MANIFEST')
     parser.add_argument('--export', type=Path, metavar='DIR', help='Export a durable training snapshot, then exit')
+    parser.add_argument('--prepare-playback', action='store_true', help='Preload private H.264 EgoVerse playback copies, then exit')
     parser.add_argument('--port', type=int, default=8326)
     parser.add_argument('--auth-port', type=int, default=8903)
     parser.add_argument('--origin', default=Handler.origin)
@@ -284,6 +305,14 @@ def main():
     if args.export:
         export_training(args.data_root.resolve(), args.edits, args.export, sources)
         print(f'Training snapshot: {args.export.resolve()}')
+        return
+    if args.prepare_playback:
+        datasets.REPO = args.data_root.resolve()
+        datasets.CLIP_CACHE = args.edits.parent / 'playback'
+        episodes = [e for e in datasets.load(sources) if e['dataset'].lower() == 'egoverse']
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            for count, _ in enumerate(workers.map(datasets.playback_file, episodes), 1):
+                print(f'Playback ready: {count}/{len(episodes)}', flush=True)
         return
     args.edits.parent.mkdir(parents=True, exist_ok=True)
     # Only one process may write this history; the thread lock handles concurrent requests.
