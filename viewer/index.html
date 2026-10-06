@@ -766,7 +766,7 @@ const step = d => { const i = FILTERED.indexOf(CUR); if (FILTERED[i + d]) open(F
 const random = () => { if (FILTERED.length) open(FILTERED[Math.floor(Math.random() * FILTERED.length)].id); };
 
 function renderView(e, d, t0, sel0) {
-  const comparisonOpen = t0 !== undefined ? !($('#captionCompare')?.hidden ?? false) : true;
+  const comparisonOpen = t0 !== undefined ? !($('#captionCompare')?.hidden ?? true) : false;
   const i = FILTERED.indexOf(e), hasSub = d.subtasks.length > 0;
   const q = `p=${encodeURIComponent(e.id)}`;
   const dur = e.duration || Math.max(1, ...d.atomic.map(a => a.end));
@@ -1762,7 +1762,9 @@ const DATASETS = () => [...new Set(EPS.map(e => e.dataset))];
 const SPLITS = () => [...new Set(EPS.flatMap(e => e.split_memberships || [e.split]))].sort((a, b) => (SPLIT_ORDER.indexOf(a) + 1 || 9) - (SPLIT_ORDER.indexOf(b) + 1 || 9));
 // QA progress per assignee: a row filters the list to that person's episodes.
 function qaTable() {
-  const people = [...ROSTER.reviewers, ...ROSTER.admins].filter(n => EPS.some(e => e.assignee === n));
+  const episodes = ME?.role === 'reviewer' ? EPS.filter(e => !ROSTER.admins.includes(e.assignee)) : EPS;
+  const people = [...new Set([...ROSTER.reviewers, ...ROSTER.admins])]
+    .filter(n => episodes.some(e => e.assignee === n));
   if (!people.length) return '';
   const row = (n, eps, cls = '') => {
     const corrected = eps.filter(e => e.qa === 'corrected'), unchanged = eps.filter(e => e.qa === 'confirmed');
@@ -1776,8 +1778,8 @@ function qaTable() {
       <td class="num">${num(eps.length - c - k)}</td><td class="num">${eps.length ? Math.round(100 * (c + k) / eps.length) : 0}%</td></tr>`;
   };
   return `<table><thead><tr><th>QA reviewer</th><th>assigned</th><th>video</th><th>corrected</th><th>corrected hours</th><th>unchanged</th><th>unchanged hours</th>
-      <th>to do</th><th>done</th></tr></thead><tbody>${people.map(n => row(n, EPS.filter(e => e.assignee === n))).join('')}
-      ${row('', EPS.filter(e => e.assignee), 'all')}</tbody></table>`;
+      <th>to do</th><th>done</th></tr></thead><tbody>${people.map(n => row(n, episodes.filter(e => e.assignee === n))).join('')}
+      ${row('', episodes.filter(e => e.assignee), 'all')}</tbody></table>`;
 }
 function renderQAStats() {
   const visible = !!ME && $('#login').hidden;
@@ -1834,7 +1836,7 @@ request('/api/episodes').then(r => r.json()).then(j => {
   if ([...$('#taskSel').options].some(o => o.value === requested.get('task'))) $('#taskSel').value = requested.get('task');
   renderStats();
   if (AUTH) {
-    ME = j.user; showMe(); $('#whoSel').value = '';
+    ME = j.user; showMe(); $('#whoSel').value = '@me';
   } else {
     // a stored login is re-checked (a server restart voids it); none yet -> the name picker
     let saved = null; try { saved = JSON.parse(store('qa') || 'null'); } catch (err) { /* bad value: ask again */ }

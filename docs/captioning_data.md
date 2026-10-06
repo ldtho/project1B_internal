@@ -296,8 +296,8 @@ Ask reviewers to save drafts before restart, then refresh their browsers. Assign
 
 ## 8. Review captions and inspect before/after
 
-1. Filter samples by dataset, split, assignee, QA state, or search text.
-   **QA progress** is available to every authenticated user. Expand it to see assigned, corrected, unchanged, remaining, and completion totals per assignee. Click an assignee's row to view their episodes.
+1. The page starts with **my assigned episodes**. Filter samples by dataset, split, assignee, QA state, or search text; choose **all episodes** to browse beyond your assignments.
+   **QA progress** is available to every authenticated user. Expand it to see assigned, corrected, unchanged, remaining, and completion totals per assignee. For `caption_data_reviewer` users, admin assignments are excluded from rows and totals. Admins see all assignments. Click an assignee's row to view their episodes.
 2. Select a sample. Play the video and inspect instruction, sub-task, and atomic captions.
    Caption controls, video size, and speed sit above the video; editing and save actions sit below it. Selected annotation stays visible directly above the timeline; crop and review-reason fields sit below it.
    Drag the video captions to move the block within the frame; its position is remembered in this browser. Double-click to reset. When focused, arrow keys move it and **Home** resets it. Position also adapts to video resizing and the **F** fullscreen shortcut.
@@ -306,7 +306,7 @@ Ask reviewers to save drafts before restart, then refresh their browsers. Assign
    **Hide Qwen suggestions** hides check notes and suggestion controls in the selected annotation and caption table. **Show Qwen suggestions** restores them. This preference persists in the browser; captions and saved corrections are unchanged.
    **Flag for Review** opens a required reason field. Describe what needs another inspection, then **Save** to persist the flag and reason. **Remove Review Flag** clears both. Flags appear in the **flagged for review** flag filter, independently of normal **corrected** or **saved unchanged** QA status and completion totals.
    Expand **Crop video** below the timeline. Set start/end from the playhead or enter times; shaded regions are excluded. **Preview crop** limits playback to the retained range; turn it off to inspect outside that range. **Clear crop** restores the full video. Crop changes support undo/discard and persist with **Save**.
-4. Inspect **Before / after** beside the video (below it on narrow screens). It opens by default and scrolls independently on wide screens; the **Before / after** button shows or hides it. Default comparison is original versus current saved captions or unsaved draft.
+4. Click **Before / after** to inspect changes beside the video (below it on narrow screens). The panel starts hidden for each episode and scrolls independently on wide screens. Default comparison is original versus current saved captions or unsaved draft.
 5. Inspect removed words, added words, timing changes, and added/removed cues. **Show unchanged captions** includes the untouched parts. Timestamp buttons seek the video to either version's cue.
 6. Click **Save** and wait for success. The next episode in the current filtered list opens automatically; saving the last episode stays there. Failed saves keep the current episode and draft. Saved revisions remain available when you reopen the episode.
 

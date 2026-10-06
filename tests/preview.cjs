@@ -49,11 +49,15 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
         { ...episode, id: 'qa-confirmed-fixture', assignee: 'QA admin fixture', qa: 'confirmed', review_flag: true },
         { ...episode, id: 'qa-pending-fixture', assignee: 'QA reviewer fixture', qa: null }];
       CUR = EPS[0]; FILTERED = EPS;
-      ROSTER = { reviewers: ['QA reviewer fixture'], admins: ['QA admin fixture'] };
+      ROSTER = { reviewers: ['QA reviewer fixture', 'QA admin fixture'], admins: ['QA admin fixture'] };
       showMe(); $('#qaStats').open = true;
     });
+    const reviewer = await page.evaluate(() => ME.role === 'reviewer');
+    assert.deepEqual(await page.locator('#qaStatsBody tr.qa').evaluateAll(rows => rows.map(row => row.dataset.who)),
+      reviewer ? ['QA reviewer fixture'] : ['QA reviewer fixture', 'QA admin fixture']);
     assert.deepEqual(await page.locator('#qaStatsBody tr.all td.num').allTextContents(),
-      ['3', '0.0 h', ' 1', '0.00 h', ' 1', '0.00 h', '1', '67%']);
+      reviewer ? ['2', '0.0 h', ' 1', '0.00 h', ' 0', '0.00 h', '1', '50%']
+        : ['3', '0.0 h', ' 1', '0.00 h', ' 1', '0.00 h', '1', '67%']);
     await page.locator('#qaStatsBody tr[data-who="QA reviewer fixture"]').click();
     assert.equal(await page.locator('#whoSel').inputValue(), 'QA reviewer fixture');
     assert.deepEqual(await page.evaluate(() => FILTERED.map(episode => episode.qa)), ['corrected', null]);
@@ -68,6 +72,40 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     });
   };
   await checkQAProgress();
+  const checkLandingDefaults = async () => {
+    const endpoint = `${base}/captioning_data/api/episodes`;
+    await page.route(endpoint, async route => {
+      const response = await route.fetch(), data = await response.json();
+      const episode = data.episodes[0], name = data.user.name;
+      data.episodes = [{ ...episode, assignee: name },
+        { ...episode, id: 'landing-admin-fixture', assignee: 'Other admin' },
+        { ...episode, id: 'landing-reviewer-fixture', assignee: 'Other reviewer' }];
+      data.roster = { reviewers: ['Other reviewer', ...(data.user.role === 'admin' ? [] : [name])],
+        admins: ['Other admin', ...(data.user.role === 'admin' ? [name] : [])] };
+      await route.fulfill({ response, json: data });
+    });
+    try {
+      await page.goto(`${base}/captioning_data/`); await page.locator('#edSave').waitFor();
+      assert.equal(await page.locator('#whoSel').inputValue(), '@me');
+      assert.deepEqual(await page.evaluate(() => FILTERED.map(episode => episode.assignee)),
+        [await page.evaluate(() => ME.name)]);
+      assert.equal(await page.locator('#captionCompare').isHidden(), true);
+      assert.equal(await page.locator('#compareBtn').getAttribute('aria-expanded'), 'false');
+      await page.locator('#whoSel').selectOption('');
+      assert.equal(await page.evaluate(() => FILTERED.length), 3);
+      await page.locator('#whoSel').selectOption('@me');
+      assert.equal(await page.evaluate(() => FILTERED.length), 1);
+      await page.locator('#compareBtn').click();
+      assert.equal(await page.locator('#captionCompare').isVisible(), true);
+      await page.reload(); await page.locator('#edSave').waitFor();
+      assert.equal(await page.locator('#whoSel').inputValue(), '@me');
+      assert.equal(await page.locator('#captionCompare').isHidden(), true);
+    } finally {
+      await page.unroute(endpoint);
+      await page.goto(`${base}/captioning_data/`); await page.locator('#edSave').waitFor();
+    }
+  };
+  await checkLandingDefaults();
   try {
     grantAdmin(true);
     assert.ok((await (await context.request.get(`${base}/api/auth/me`)).json()).roles.includes('admin'));
@@ -99,9 +137,9 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     };
     return { video: rect('#videos'), comparison: rect('#captionCompare') };
   });
-  assert.equal(await page.locator('#captionCompare').isVisible(), true);
+  assert.equal(await page.locator('#captionCompare').isHidden(), true);
   assert.equal(await page.locator('#captionCompare > summary').count(), 0);
-  assert.equal(await page.locator('#compareBtn').getAttribute('aria-expanded'), 'true');
+  assert.equal(await page.locator('#compareBtn').getAttribute('aria-expanded'), 'false');
   const controls = selector => page.locator(selector).evaluate(group => [...group.querySelectorAll('button, input, select')].map(control => control.id));
   assert.deepEqual(await controls('.cams'), ['cc', 'qwenToggle', 'captionSettingsBtn', 'videoSize', 'rate']);
   assert.deepEqual(await controls('.tlbar'), ['edMode', 'reset', 'compareBtn', 'reviewFlag', 'link', 'magnet', 'edDiscard', 'edSave']);
@@ -114,6 +152,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     const view = document.querySelector('#view').getBoundingClientRect(), video = document.querySelector('#videos').getBoundingClientRect(), timeline = document.querySelector('.tlrow').getBoundingClientRect();
     return video.top >= view.top - 1 && timeline.bottom <= view.bottom + 1;
   }), 'Video and full timeline fit together at 1280×720');
+  await page.locator('#compareBtn').click();
   const wide = await mediaLayout();
   assert.ok(wide.comparison.x >= wide.video.right + 10);
   assert.ok(Math.abs(wide.comparison.y - wide.video.y) < 1);
@@ -530,6 +569,8 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.equal(savedHistory.history.at(-2).captions.review_flag, true);
   assert.equal(savedHistory.history.at(-2).captions.review_reason, 'Hands are obscured; please verify this action.');
   assert.deepEqual(savedHistory.history.at(-2).captions.crop, testCrop);
+  assert.equal(await page.locator('#captionCompare').isHidden(), true);
+  await page.locator('#compareBtn').click();
   await page.locator('#cmpAfter').selectOption(String(version + 1));
   assert.match(await page.locator('#cmpContent').innerText(), /Local preview correction/);
   assert.match(await page.locator('#cmpMeta').innerText(), /Mock worker/);
@@ -566,6 +607,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.locator('#identifier').fill('admin'); await page.locator('#password').fill('preview-password'); await page.locator('#login-button').click();
   await page.locator('#library-view').waitFor(); await page.locator('.recording-row').first().waitFor();
   await page.getByRole('link', { name: 'Open captioning_data' }).click(); await page.locator('#edSave').waitFor();
+  await checkLandingDefaults();
   await checkQAProgress();
   await page.getByRole('button', { name: 'sign out', exact: true }).click(); await page.locator('#login-view').waitFor();
   for (const name of ['caption_data_admin', 'caption_data_reviewer']) {
@@ -576,13 +618,14 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     assert.equal((await responseData.json()).user.role, name === 'caption_data_admin' ? 'admin' : 'reviewer');
     assert.equal((await context.request.get(`${base}/api/admin/videos`)).status(), 403);
     await page.goto(`${base}/captioning_data/`);
+    await checkLandingDefaults();
     await checkQAProgress();
     await page.getByRole('button', { name: 'Flag for Review', exact: true }).click();
     assert.equal(await page.evaluate(() => EDIT.review_flag), true);
     await page.keyboard.press('Control+z');
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: mock login/roles; real video; restored control order; caption settings size/background, persistence, dismissal and mobile bounds; selected annotation always visible; Qwen visibility; Enter/Up editing and live caption sync; caption drag, bounds, persistence, resize and F fullscreen; Space playback, trim/extend, undo and typing isolation; isolated corrections; before/after drafts, timing, text safety, saved/reverted history and responsive layout; admin navigation; logout.');
+  console.log('PASS: mock login/roles; reviewer QA hides admin rows/totals; assigned landing/reload and collapsed comparison defaults; real video; restored control order; caption settings size/background, persistence, dismissal and mobile bounds; selected annotation always visible; Qwen visibility; Enter/Up editing and live caption sync; caption drag, bounds, persistence, resize and F fullscreen; Space playback, trim/extend, undo and typing isolation; isolated corrections; before/after drafts, timing, text safety, saved/reverted history and responsive layout; admin navigation; logout.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   try { if (restoreCaptions) await restoreCaptions(); }
   catch (error) { console.error(error); process.exitCode = 1; }
