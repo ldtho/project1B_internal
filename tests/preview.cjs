@@ -188,10 +188,12 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await setCaptionOpacity(35);
   await page.evaluate(() => document.exitFullscreen());
   assert.equal(await page.locator('#captionSize').isHidden(), true);
+  assert.equal(await page.locator('#captionWidth').isHidden(), true);
   assert.equal(await page.locator('#captionOpacity').isHidden(), true);
   await page.locator('#captionSettingsBtn').click();
   await page.waitForFunction(() => document.querySelector('#captionSettings').matches(':popover-open'));
   assert.equal(await page.locator('#captionSize').isVisible(), true);
+  assert.equal(await page.locator('#captionWidth').isVisible(), true);
   assert.equal(await page.locator('#captionOpacity').isVisible(), true);
   const setCaptionSize = async value => {
     await page.locator('#captionSize').evaluate((input, value) => { input.value = value; input.dispatchEvent(new Event('input')); }, String(value));
@@ -201,6 +203,20 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     assert.equal(await page.locator('#ovlAtom').evaluate(element => parseFloat(getComputedStyle(element).fontSize)), 16 * value / 100);
   };
   await setCaptionSize(50); await setCaptionSize(200); await setCaptionSize(150);
+  const setCaptionWidth = async value => {
+    const draft = await page.evaluate(() => JSON.stringify(EDIT));
+    await page.locator('#captionWidth').evaluate((input, value) => { input.value = value; input.dispatchEvent(new Event('input')); }, String(value));
+    assert.equal(await page.locator('#captionWidthValue').textContent(), `${value}%`);
+    assert.equal(await page.locator('#captionWidth').getAttribute('aria-valuetext'), `${value}%`);
+    await page.waitForFunction(value => {
+      const frame = document.querySelector('#stage').getBoundingClientRect(), box = document.querySelector('#ovl').getBoundingClientRect();
+      return Math.abs(box.width - frame.width * value / 100) < 1;
+    }, value);
+    assert.ok(await page.locator('#ovl').evaluate(box => box.scrollWidth <= box.clientWidth + 1));
+    assert.ok(await page.evaluate(value => [...document.querySelector('video').textTracks[0].cues].every(cue => cue.size === value), value));
+    assert.equal(await page.evaluate(() => JSON.stringify(EDIT)), draft);
+  };
+  await setCaptionWidth(100); await setCaptionWidth(20); await setCaptionWidth(70);
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('#captionSettings').isHidden(), true);
   await page.locator('#captionSettingsBtn').click();
@@ -212,10 +228,11 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.reload(); await page.locator('#edSave').waitFor();
   assert.equal(await page.locator('#captionOpacity').inputValue(), '35');
   assert.equal(await page.locator('#captionSize').inputValue(), '150');
+  assert.equal(await page.locator('#captionWidth').inputValue(), '70');
   assert.equal(await page.locator('#ovlAtom').evaluate(element => getComputedStyle(element).fontSize), '24px');
   assert.equal(await page.locator('#ovlAtom').evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0.35)');
   await page.locator('#captionSettingsBtn').click();
-  await setCaptionOpacity(72); await setCaptionSize(100);
+  await setCaptionOpacity(72); await setCaptionSize(100); await setCaptionWidth(94);
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
   const captionsInside = () => page.waitForFunction(() => {
@@ -236,6 +253,9 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await dragCaptions(frame.x + frame.width + 100, frame.y + frame.height + 100);
   assert.ok(await captionsInside());
   assert.deepEqual(await page.evaluate(() => CAPTION_POS), [1, 1]);
+  await setCaptionWidth(20); assert.ok(await captionsInside());
+  await setCaptionWidth(100); assert.ok(await captionsInside());
+  await setCaptionWidth(70); assert.ok(await captionsInside());
   assert.equal(await page.locator('video').evaluate(video => video.paused), true);
   assert.equal(await page.locator('video').evaluate(video => video.currentTime), timeBeforeDrag);
   await page.locator('#ovl').focus(); await page.keyboard.press('Home');
@@ -253,8 +273,10 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   assert.ok(await captionsInside());
   await page.locator('video').focus(); await page.keyboard.press('f');
   await page.waitForFunction(() => document.fullscreenElement?.id === 'stage');
+  await setCaptionWidth(70);
   assert.ok(await captionsInside());
   await page.evaluate(() => document.exitFullscreen());
+  await setCaptionWidth(94);
   await page.locator('#videoSize').evaluate(input => { input.value = '100'; input.dispatchEvent(new Event('input')); });
   await page.locator('#cc').uncheck(); assert.equal(await page.locator('#ovl').isHidden(), true);
   await page.locator('#cc').check(); assert.ok(await captionsInside());
@@ -307,6 +329,13 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.evaluate(fixture => renderView(CUR, fixture, 0), fixture);
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
   await page.locator('#selIn').fill('[both hands] ' + 'move the item carefully '.repeat(30));
+  await setCaptionWidth(20);
+  assert.ok(await page.locator('#ovlAtom').evaluate(box => {
+    const style = getComputedStyle(box), padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    return box.getBoundingClientRect().height > parseFloat(style.lineHeight) + padding;
+  }), 'Long captions wrap within narrowed box');
+  assert.ok(await captionsInside());
+  await setCaptionWidth(94);
   await page.locator('#videoSize').evaluate(input => { input.value = '25'; input.dispatchEvent(new Event('input')); });
   assert.ok(await captionsInside());
   await page.keyboard.press('Control+z');
@@ -589,6 +618,9 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     const panel = document.querySelector('#captionSettings'), box = panel.getBoundingClientRect();
     return panel.matches(':popover-open') && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight;
   });
+  await setCaptionWidth(20); assert.ok(await captionsInside());
+  await setCaptionWidth(100); assert.ok(await captionsInside());
+  await setCaptionWidth(94);
   assert.ok(await page.locator('#captionSettings').evaluate(panel => panel.scrollWidth <= panel.clientWidth + 1));
   await page.locator('#captionSettings').screenshot({ path: path.join(state, 'captioning-data-settings-mobile.png') });
   await page.keyboard.press('Escape');
@@ -625,7 +657,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     await page.keyboard.press('Control+z');
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: mock login/roles; reviewer QA hides admin rows/totals; assigned landing/reload and collapsed comparison defaults; real video; restored control order; caption settings size/background, persistence, dismissal and mobile bounds; selected annotation always visible; Qwen visibility; Enter/Up editing and live caption sync; caption drag, bounds, persistence, resize and F fullscreen; Space playback, trim/extend, undo and typing isolation; isolated corrections; before/after drafts, timing, text safety, saved/reverted history and responsive layout; admin navigation; logout.');
+  console.log('PASS: mock login/roles; reviewer QA hides admin rows/totals; assigned landing/reload and collapsed comparison defaults; real video; restored control order; caption settings size/width/background, wrapping, native cue width, persistence, dismissal and mobile bounds; selected annotation always visible; Qwen visibility; Enter/Up editing and live caption sync; caption drag, bounds, persistence, resize and F fullscreen; Space playback, trim/extend, undo and typing isolation; isolated corrections; before/after drafts, timing, text safety, saved/reverted history and responsive layout; admin navigation; logout.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   try { if (restoreCaptions) await restoreCaptions(); }
   catch (error) { console.error(error); process.exitCode = 1; }

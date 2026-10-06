@@ -87,9 +87,9 @@
   #stage video { width:100%; max-height:calc(58vh * var(--video-scale, 1)); background:#000; border-radius:4px; display:block; }
   video::cue { font-size:calc(18px * var(--caption-scale,1)); background:rgba(0,0,0,var(--caption-bg-opacity,.65)); }
   /* Own caption layer; the native <track> shows only when the video element alone is fullscreen. */
-  #ovl { position:absolute; left:50%; bottom:48px; transform:translateX(-50%); width:max-content; max-width:100%; max-height:100%; overflow:auto; pointer-events:none; padding:0 12px;
+  #ovl { position:absolute; left:50%; bottom:48px; transform:translateX(-50%); width:var(--caption-width,94%); max-width:100%; max-height:100%; overflow:auto; pointer-events:none;
          display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; }
-  #ovl > div { display:inline-block; max-width:94%; background:rgba(0,0,0,var(--caption-bg-opacity,.72)); color:#fff;
+  #ovl > div { display:inline-block; width:100%; max-width:100%; background:rgba(0,0,0,var(--caption-bg-opacity,.72)); color:#fff;
                padding:3px 10px; border-radius:4px; margin:2px 0; text-shadow:0 1px 2px #000;
                pointer-events:auto; cursor:grab; touch-action:none; user-select:none; overflow-wrap:anywhere; }
   #ovl.dragging > div { cursor:grabbing; }
@@ -572,6 +572,8 @@ let CAPTION_BG = Number(store('caption-bg-opacity') ?? 72);
 CAPTION_BG = Number.isFinite(CAPTION_BG) ? Math.max(0, Math.min(100, CAPTION_BG)) : 72;
 let CAPTION_SIZE = Number(store('caption-size') ?? 100);
 CAPTION_SIZE = Number.isFinite(CAPTION_SIZE) ? Math.max(50, Math.min(200, CAPTION_SIZE)) : 100;
+let CAPTION_WIDTH = Number(store('caption-width') ?? 94);
+CAPTION_WIDTH = Number.isFinite(CAPTION_WIDTH) ? Math.max(20, Math.min(100, CAPTION_WIDTH)) : 94;
 let CAPTION_POS = null;
 try {
   const pos = JSON.parse(store('caption-position'));
@@ -807,10 +809,12 @@ function renderView(e, d, t0, sel0) {
     <div id="captionSettings" popover aria-label="Caption settings">
       <label class="videoSize">caption size <input type="range" id="captionSize" min="50" max="200" step="5" value="${CAPTION_SIZE}"
         aria-label="Caption size" aria-valuetext="${CAPTION_SIZE}%"><output id="captionSizeValue" for="captionSize">${CAPTION_SIZE}%</output></label>
+      <label class="videoSize">caption width <input type="range" id="captionWidth" min="20" max="100" step="1" value="${CAPTION_WIDTH}"
+        aria-label="Caption width" aria-valuetext="${CAPTION_WIDTH}%"><output id="captionWidthValue" for="captionWidth">${CAPTION_WIDTH}%</output></label>
       <label class="videoSize">caption background <input type="range" id="captionOpacity" min="0" max="100" step="1" value="${CAPTION_BG}"
         aria-label="Caption background opacity" aria-valuetext="${CAPTION_BG}%"><output id="captionOpacityValue" for="captionOpacity">${CAPTION_BG}%</output></label></div>
     <div class="review-media">
-    <div id="videos" style="width:${VIDEO_SIZE}%; --video-scale:${VIDEO_SIZE / 100}"><div id="stage" style="--caption-bg-opacity:${CAPTION_BG / 100}; --caption-scale:${CAPTION_SIZE / 100}"><video controls preload="metadata" src="${mediaBase}/video?${q}">
+    <div id="videos" style="width:${VIDEO_SIZE}%; --video-scale:${VIDEO_SIZE / 100}"><div id="stage" style="--caption-bg-opacity:${CAPTION_BG / 100}; --caption-scale:${CAPTION_SIZE / 100}; --caption-width:${CAPTION_WIDTH}%"><video controls preload="metadata" src="${mediaBase}/video?${q}">
         <track kind="subtitles" label="sub-task + atomic" srclang="en" default></video>
       <div id="ovl" tabindex="0" role="group" aria-label="Video captions: drag or use arrow keys to move; Home resets"
         aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home" title="Drag captions to move · double-click to reset"><div class="s hide" id="ovlSub"></div><div class="a hide" id="ovlAtom"></div></div></div></div>
@@ -976,6 +980,7 @@ function renderView(e, d, t0, sel0) {
       end = Math.max(end, Math.min(cue.end, dur));
     }
     if (ins && end < dur) track.addCue(new VTTCue(end, dur, ins));
+    for (const cue of track.cues || []) cue.size = CAPTION_WIDTH;
   };
   const drawLanes = () => {
     const { ins, subs, atoms } = lv(), grip = EDIT ? '<i class="hl"></i><i class="hr"></i>' : '';
@@ -1597,6 +1602,13 @@ function renderView(e, d, t0, sel0) {
     stage.style.setProperty('--caption-scale', CAPTION_SIZE / 100);
     $('#captionSizeValue').value = `${CAPTION_SIZE}%`;
     ev.target.setAttribute('aria-valuetext', `${CAPTION_SIZE}%`);
+  });
+  $('#captionWidth').addEventListener('input', ev => {
+    CAPTION_WIDTH = +ev.target.value; store('caption-width', CAPTION_WIDTH);
+    stage.style.setProperty('--caption-width', `${CAPTION_WIDTH}%`);
+    $('#captionWidthValue').value = `${CAPTION_WIDTH}%`;
+    ev.target.setAttribute('aria-valuetext', `${CAPTION_WIDTH}%`);
+    syncTrack(); placeCaptions();
   });
   $('#captionSettings').addEventListener('toggle', ev => {
     if (ev.newState !== 'open') return;
