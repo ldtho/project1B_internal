@@ -28,4 +28,14 @@ assert.equal(deleteHandPhrase(single.text, single.cursor).text, '');
 assert.equal(deleteHandPhrase('No hand tags here', 5), null);
 assert.equal(deleteHandPhrase('Prefix [left hand] hold cup', 2), null);
 assert.equal(deleteHandPhrase('[left hand] cup [right hand] lid', 12).text, '[left hand] | [right hand] lid');
+const capitalized = '[Left Hand] hold cup | [Right Hand] lift lid';
+assert.equal(deleteHandPhrase(capitalized, capitalized.indexOf('cup'))?.text, '[Left Hand] | [Right Hand] lift lid');
+assert.equal(deleteHandPhrase('[left hand] cup | [Right Hand] lid', 30).text, '[left hand] cup | [Right Hand] ');
+const otherClause = '[left hand] cup | untagged caption';
+assert.equal(deleteHandPhrase(otherClause, 12).text, '[left hand] | untagged caption');
+assert.equal(deleteHandPhrase('[left hand] | untagged caption', 12).text, 'untagged caption');
+assert.equal(deleteHandPhrase(otherClause, otherClause.length), null);
+const longPhrase = '[left hand] reach toward the cup, grasp its handle, and lift it | [right hand] hold lid';
+for (const cursor of [longPhrase.indexOf('reach'), longPhrase.indexOf('grasp'), longPhrase.indexOf('it |') + 2])
+  assert.equal(deleteHandPhrase(longPhrase, cursor).text, '[left hand] | [right hand] hold lid');
 console.log('PASS: hand swap and two-step phrase/tag deletion; first/middle/last/single clauses; neighboring captions preserved.');

@@ -331,8 +331,10 @@ Hand editing shortcuts in caption text fields:
 | **lh + Space** | Insert `[left hand]`. |
 | **rh + Space** | Insert `[right hand]`. |
 | **bh + Space** | Insert `[both hands]`. |
-| **Shift+Delete** | Clear the phrase belonging to the tag at the cursor; press again to remove the empty tag and adjoining separator. |
+| **Shift+Delete** / **Shift+Backspace** | With the cursor inside a tagged phrase, clear its entire text and keep the tag; press again to remove the empty tag and adjoining separator. Preserve other phrases and the segment. |
 | **Alt+S** / **Swap hands** | Exchange left/right tags across the focused caption, or the selected caption when outside a text field. Keep `[both hands]` unchanged. |
+
+For phrase deletion, place the cursor anywhere inside its text; selecting the phrase is unnecessary. If text is selected, the active end of the selection determines the phrase. Outside a caption text field, Shift+Delete/Backspace does not delete a segment.
 
 To change one phrase's tag, select the whole tag, including brackets, and type **lh**, **rh**, or **bh** followed by **Space**. The phrase text stays intact. **Alt+L/R/B** for changing only the tag at the cursor are proposed, not implemented.
 

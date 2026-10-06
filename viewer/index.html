@@ -416,7 +416,7 @@
       Seeking or resuming playback restores the caption at the playhead.</li>
   </ul>
   <p>In a caption text field, type <kbd>lh</kbd>, <kbd>rh</kbd>, or <kbd>bh</kbd> followed by Space to insert
-    <b>[left hand]</b>, <b>[right hand]</b>, or <b>[both hands]</b>. <kbd>Shift+Delete</kbd> clears the phrase belonging to
+    <b>[left hand]</b>, <b>[right hand]</b>, or <b>[both hands]</b>. <kbd>Shift+Delete</kbd> (or <kbd>Shift+Backspace</kbd>) clears the whole phrase belonging to
     the tag at the cursor; press again to remove the empty tag. <b>Swap hands</b> or <kbd>Alt+S</kbd> exchanges left/right
     hand tags; both-hands captions stay unchanged. Each action supports undo and remains a draft until saved.</p>
   <h4>Filters and flags</h4>
@@ -537,13 +537,16 @@ const TAG = /\[(left|right|both) hands?\]|\[ego\]/g;
 const tagCount = t => { const n = {}; for (const m of t.matchAll(TAG)) n[m[0]] = (n[m[0]] || 0) + 1; return n; };
 const swapHands = text => text.replace(/\[(left|right) hands?\]/gi, (_, hand) => `[${hand.toLowerCase() === 'left' ? 'right' : 'left'} hand]`);
 const deleteHandPhrase = (text, cursor) => {
-  const tags = [...text.matchAll(TAG)], index = tags.findLastIndex(tag => tag.index <= cursor);
+  const tags = [...text.matchAll(new RegExp(TAG.source, 'gi'))], index = tags.findLastIndex(tag => tag.index <= cursor);
   if (index < 0) return null;
-  const tag = tags[index], next = tags[index + 1], end = next?.index ?? text.length;
+  const tag = tags[index], next = tags[index + 1];
   const tagEnd = tag.index + tag[0].length;
-  if (text.slice(tagEnd, end).replace(/\s*\|\s*$/, '').trim())
-    return { text: text.slice(0, tagEnd) + (next ? ' | ' : ' ') + text.slice(end), cursor: tagEnd + 1 };
-  const before = text.slice(0, tag.index).replace(/\s*\|\s*$/, '').trimEnd(), after = text.slice(end).trimStart();
+  const pipe = text.indexOf('|', tagEnd), end = Math.min(next?.index ?? text.length, pipe < 0 ? text.length : pipe);
+  if (cursor > end) return null;
+  if (text.slice(tagEnd, end).trim())
+    return { text: text.slice(0, tagEnd) + (end === next?.index ? ' | ' : ' ') + text.slice(end), cursor: tagEnd + 1 };
+  const before = text.slice(0, tag.index).replace(/\s*\|\s*$/, '').trimEnd();
+  const after = text.slice(end).replace(/^\s*\|\s*/, '').trimStart();
   const separator = before && after ? ' | ' : '';
   return { text: before + separator + after, cursor: before.length + separator.length };
 };
@@ -1691,10 +1694,12 @@ function renderView(e, d, t0, sel0) {
       if (caption) run('swap', caption.l, caption.k);
     });
     if (textInput && !mod && !ev.altKey) {
-      if (key === 'Delete' && ev.shiftKey) return done(() => {
+      if ((key === 'Delete' || key === 'Backspace') && ev.shiftKey) return done(() => {
         if (ev.repeat) return;
-        const replacement = deleteHandPhrase(textInput.value, textInput.selectionStart);
+        const cursor = textInput.selectionDirection === 'backward' ? textInput.selectionStart : textInput.selectionEnd;
+        const replacement = deleteHandPhrase(textInput.value, cursor);
         if (replacement) replaceCaptionInput(textInput, replacement.text, replacement.cursor);
+        else msg('Place the cursor inside a hand-tag phrase first.', true);
       });
       if (key === ' ' && !ev.shiftKey && textInput.selectionStart === textInput.selectionEnd) {
         const cursor = textInput.selectionStart, match = textInput.value.slice(0, cursor).match(/(?:^|[\s|])(lh|rh|bh)$/i);
@@ -1739,7 +1744,7 @@ function renderView(e, d, t0, sel0) {
       k < 0 ? msg(`the playhead is not inside a ${l === 'subs' ? 'sub-task' : 'atomic line'}`, true) : run('cut', l, k);
     });
     if (key === 'a') return done(() => need(k => run('add', l, k)));
-    if (key === 'Delete' && ev.shiftKey) return done(() => msg('Place the cursor inside a hand-tag phrase first.', true));
+    if ((key === 'Delete' || key === 'Backspace') && ev.shiftKey) return done(() => msg('Place the cursor inside a hand-tag phrase first.', true));
     if (key === 'Backspace' || key === 'Delete') return done(() => need(k => run('del', l, k)));
     if (key === 'm' && ev.shiftKey) return done(() => need(k => run('merge', l, k)));
     if (key === 'Enter' || key === 'ArrowUp') return done(() => editCurrentCaption(key === 'ArrowUp'));
