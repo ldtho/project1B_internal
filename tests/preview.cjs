@@ -296,11 +296,25 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     atomic: [{ start: 0, end: duration * 0.25, text: '[both hands] First action' },
       { start: duration * 0.375, end: duration * 0.5, text: '[both hands] Second action' }] };
   const qwenFixture = { ...fixture,
-    check: { ...fixture.check, task: { old: fixture.instruction, new: 'Suggested instruction', error: 'incorrect' } },
-    subtasks: fixture.subtasks.map(sub => ({ ...sub, check: { old: sub.desc, new: 'Suggested subtask', error: 'incorrect' } })) };
+    check: { ...fixture.check, task: { old: fixture.instruction, new: 'Suggested instruction', error: 'incorrect', saw: 'The person moves the object onto the table.' } },
+    subtasks: fixture.subtasks.map(sub => ({ ...sub, check: { old: sub.desc, new: 'Suggested subtask', error: 'incorrect', saw: 'Both hands hold the object. <img src=x onerror=alert(1)>' } })) };
   await page.evaluate(fixture => renderView(CUR, fixture, 0), qwenFixture);
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
   assert.ok(await page.locator('#selChk .chk').count());
+  assert.equal(await page.locator('#selChk img').count(), 0);
+  assert.ok(await page.locator('#selChk').evaluate(card => card.scrollHeight <= card.clientHeight + 1));
+  assert.ok(await page.locator('#selChk .chk-head').evaluateAll(headers => headers.every(header => {
+    const verdict = header.firstElementChild.getBoundingClientRect(), saw = header.querySelector('.saw').getBoundingClientRect();
+    return saw.left >= verdict.right && Math.abs(saw.top - verdict.top) < 2;
+  })), 'Saw sentences share the verdict/error header row');
+  await page.locator('#selChk').screenshot({ path: path.join(state, 'captioning-data-qwen-card.png') });
+  const sideOpen = await page.evaluate(() => !document.body.classList.contains('noside'));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => showSide(false));
+  assert.ok(await page.locator('#selChk').evaluate(card => card.scrollHeight <= card.clientHeight + 1 && card.scrollWidth <= card.clientWidth + 1));
+  await page.locator('#selChk').screenshot({ path: path.join(state, 'captioning-data-qwen-card-mobile.png') });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.evaluate(open => showSide(open), sideOpen);
   assert.ok(await page.locator('#levels [data-op="sugg"], #levels [data-op="sugg-ins"]').count());
   const beforeToggle = await page.evaluate(() => JSON.stringify(EDIT));
   await page.getByRole('button', { name: 'Hide Qwen suggestions', exact: true }).click();
@@ -325,6 +339,97 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await page.getByRole('button', { name: 'Show Qwen suggestions', exact: true }).click();
   assert.equal(await page.locator('#selChk').isVisible(), true);
   assert.equal(await page.locator('#levels [data-op="sugg-ins"]').isVisible(), true);
+  const qwenVersion = await page.evaluate(() => EDIT.version);
+  const auditBeforeAccept = fs.readFileSync(path.join(state, 'edits.jsonl'), 'utf8');
+  const acceptSubtask = page.locator('#selChk button[data-op="sugg"][data-l="subs"][data-k="0"]');
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] First action');
+  await acceptSubtask.click();
+  assert.equal(await page.evaluate(() => EDIT.subs[0].text), 'Suggested subtask');
+  assert.equal(await page.locator('#levels tr[data-l="subs"][data-k="0"] input.tx').inputValue(), 'Suggested subtask');
+  assert.equal(await page.locator('#ovlSub').innerText(), 'Suggested subtask');
+  assert.match(await page.locator('#laneSub [data-sub="0"]').innerText(), /Suggested subtask/);
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] First action');
+  assert.equal(await acceptSubtask.count(), 0);
+  await page.keyboard.press('Control+z');
+  assert.equal(await acceptSubtask.isVisible(), true);
+  await page.locator('#laneSub [data-sub="0"]').click();
+  await page.waitForFunction(() => !document.querySelector('video').seeking);
+  await acceptSubtask.click();
+  assert.equal(await page.locator('#selIn').inputValue(), 'Suggested subtask');
+  await page.keyboard.press('Control+z');
+  await page.locator('#selChk button[data-op="sugg-ins"]').click();
+  assert.equal(await page.evaluate(() => EDIT.ins), 'Suggested instruction');
+  assert.equal(await page.locator('#selIn').inputValue(), 'Subtask fixture');
+  assert.equal(await page.locator('#levels input[data-l="ins"]').inputValue(), 'Suggested instruction');
+  assert.equal(await page.locator('#laneIns').innerText(), 'Suggested instruction');
+  assert.ok(await page.evaluate(() => [...document.querySelector('video').textTracks[0].cues].some(cue => cue.text === 'Suggested instruction')));
+  await page.keyboard.press('Control+z');
+  await page.locator('video').focus(); await page.keyboard.press('ArrowUp');
+  assert.equal(await page.locator('#selIn').inputValue(), 'Instruction fixture');
+  await page.locator('#selChk button[data-op="sugg-ins"]').click();
+  assert.equal(await page.locator('#selIn').inputValue(), 'Suggested instruction');
+  assert.equal(await page.locator('#selChk button[data-op="sugg-ins"]').count(), 0);
+  await page.keyboard.press('Control+z');
+  assert.equal(await page.evaluate(() => EDIT.version), qwenVersion);
+  assert.equal(fs.readFileSync(path.join(state, 'edits.jsonl'), 'utf8'), auditBeforeAccept);
+  await page.evaluate(fixture => { EDIT = null; renderView(CUR, fixture, 0); }, qwenFixture);
+  await page.locator('.tlbar label.switch').click();
+  assert.equal(await page.locator('#selChk button').count(), 0);
+  await page.locator('.tlbar label.switch').click();
+  const parentFixture = { ...qwenFixture, subtasks: [
+    { i: 0, start: 0, end: duration * 0.25, desc: 'First parent', check: { old: 'First parent', new: 'First parent suggestion', error: 'incorrect' } },
+    { i: 1, start: duration * 0.25, end: duration * 0.75, desc: 'Second parent', check: { old: 'Second parent', new: 'Second parent suggestion', error: 'incorrect' } }] };
+  await page.evaluate(fixture => { EDIT = null; renderView(CUR, fixture, 0); }, parentFixture);
+  await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
+  await page.locator('#levels tr[data-l="atoms"][data-k="1"] input.tx').focus();
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Second action');
+  await page.locator('#selChk button[data-op="sugg"][data-k="1"]').click();
+  assert.equal(await page.evaluate(() => EDIT.subs[1].text), 'Second parent suggestion');
+  assert.equal(await page.evaluate(() => EDIT.subs[0].text), 'First parent');
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Second action');
+  const selectionFixture = { ...fixture, subtasks: [
+    { i: 0, start: 0, end: duration * 0.25, desc: 'Selected subtask fixture' },
+    { i: 1, start: duration * 0.25, end: duration * 0.75, desc: 'Next subtask fixture' }] };
+  await page.evaluate(fixture => { EDIT = null; renderView(CUR, fixture, 0); }, selectionFixture);
+  await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
+  await page.locator('#laneSub [data-sub="0"]').click();
+  await page.waitForFunction(() => !document.querySelector('video').seeking);
+  assert.equal(await page.locator('#selIn').inputValue(), 'Selected subtask fixture');
+  await page.locator('video').focus(); await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#selIn').inputValue(), 'Selected subtask fixture');
+  await page.locator('#selIn').fill('Manual subtask correction');
+  assert.equal(await page.locator('#levels tr[data-l="subs"][data-k="0"] input.tx').inputValue(), 'Manual subtask correction');
+  assert.equal(await page.locator('#ovlSub').innerText(), 'Manual subtask correction');
+  assert.match(await page.locator('#laneSub [data-sub="0"]').innerText(), /Manual subtask correction/);
+  assert.equal(await page.evaluate(() => EDIT.atoms[0].text), '[both hands] First action');
+  await page.keyboard.press('Control+z'); await page.keyboard.press('Escape');
+  await page.evaluate(() => document.querySelector('video').play());
+  await page.waitForFunction(() => document.querySelector('#selIn')?.value === '[both hands] First action');
+  await page.evaluate(() => { const video = document.querySelector('video'); video.pause(); video.currentTime = video.duration * 0.1; });
+  await page.waitForFunction(() => !document.querySelector('video').seeking);
+  await page.locator('#levels tr[data-l="subs"][data-k="1"] input.tx').focus();
+  assert.equal(await page.locator('#selIn').inputValue(), 'Next subtask fixture');
+  await page.locator('#selIn').fill('Future subtask correction');
+  assert.equal(await page.evaluate(() => EDIT.subs[1].text), 'Future subtask correction');
+  assert.equal(await page.locator('#ovlSub').innerText(), 'Selected subtask fixture');
+  await page.keyboard.press('Control+z'); await page.keyboard.press('Escape');
+  await page.locator('#levels tr[data-l="subs"][data-k="0"] input.tx').focus();
+  await page.locator('video').focus(); await page.keyboard.press('e');
+  assert.equal(await page.evaluate(() => EDIT.subs[0].end), Math.round(duration * 0.1 * 10) / 10);
+  assert.equal(await page.evaluate(() => EDIT.atoms[0].end), duration * 0.25);
+  await page.keyboard.press('Control+z');
+  await page.evaluate(() => { const video = document.querySelector('video'); video.currentTime = video.duration * 0.4; });
+  await page.waitForFunction(() => !document.querySelector('video').seeking);
+  await page.locator('#levels tr[data-l="subs"][data-k="1"] input.tx').focus();
+  await page.locator('video').focus(); await page.keyboard.press('p');
+  assert.equal(await page.evaluate(() => EDIT.subs[0].end), Math.round(duration * 0.4 * 10) / 10);
+  assert.equal(await page.evaluate(() => EDIT.subs[1].start), Math.round(duration * 0.4 * 10) / 10);
+  assert.equal(await page.evaluate(() => EDIT.atoms[1].start), duration * 0.375);
+  await page.keyboard.press('Control+z');
+  const beforeO = await page.evaluate(() => JSON.stringify(EDIT));
+  await page.keyboard.press('o');
+  assert.equal(await page.evaluate(() => JSON.stringify(EDIT)), beforeO);
+  assert.equal(await page.locator('#guide kbd').filter({ hasText: /^o$/ }).count(), 0);
   await page.evaluate(() => { EDIT = null; });
   await page.evaluate(fixture => renderView(CUR, fixture, 0), fixture);
   await page.waitForFunction(() => document.querySelector('video')?.readyState > 0);
@@ -494,6 +599,8 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
   await seek(duration * 0.23);
   const movedEnd = page.locator('#levels tr[data-l="atoms"][data-k="0"] input[data-f="end"]');
   await movedEnd.fill(String(duration * 0.2)); await movedEnd.dispatchEvent('change');
+  assert.equal(await page.locator('#selIn').inputValue(), '[both hands] Timeline commit');
+  await seek(duration * 0.24);
   assert.equal(await page.locator('#selIn').inputValue(), 'Edited fallback subtask');
   page.once('dialog', dialog => dialog.accept());
   await page.locator('.tlbar label.switch').click();
@@ -657,7 +764,7 @@ const grantAdmin = enabled => execFileSync(python, ['-c',
     await page.keyboard.press('Control+z');
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: mock login/roles; reviewer QA hides admin rows/totals; assigned landing/reload and collapsed comparison defaults; real video; restored control order; caption settings size/width/background, wrapping, native cue width, persistence, dismissal and mobile bounds; selected annotation always visible; Qwen visibility; Enter/Up editing and live caption sync; caption drag, bounds, persistence, resize and F fullscreen; Space playback, trim/extend, undo and typing isolation; isolated corrections; before/after drafts, timing, text safety, saved/reverted history and responsive layout; admin navigation; logout.');
+  console.log('PASS: mock login/roles; reviewer QA hides admin rows/totals; assigned landing/reload and collapsed comparison defaults; real video; restored control order; caption settings size/width/background, wrapping, native cue width, persistence, dismissal and mobile bounds; selected annotation always visible; Qwen header saw sentence, unclipped desktop/mobile cards and visibility; Accept suggestion for subtask/instruction/parent, correct target, live sync, undo, draft-only and view-only behavior; manual timeline/table subtask selection, level-specific E/P, removed O; Enter/Up editing and live caption sync; caption drag, bounds, persistence, resize and F fullscreen; Space playback, trim/extend, undo and typing isolation; isolated corrections; before/after drafts, timing, text safety, saved/reverted history and responsive layout; admin navigation; logout.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   try { if (restoreCaptions) await restoreCaptions(); }
   catch (error) { console.error(error); process.exitCode = 1; }

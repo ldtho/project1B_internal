@@ -132,14 +132,14 @@
   .selrow .warn { margin-top:6px; font-size:12px; color:var(--bad); background:#fef2f2; border-radius:4px; padding:4px 8px; }
   .selrow .warn:empty { display:none; }
   .selrow .warn .prev { margin-top:3px; color:var(--fg); font-size:13px; }
-  #selChk { border-top:1px solid #f3d2d2; background:#fffafa; padding:4px 10px 5px 14px; max-height:80px; overflow:auto; }
+  #selChk { border-top:1px solid #f3d2d2; background:#fffafa; padding:4px 10px 5px 14px; }
   #selChk:empty { display:none; }
   #view.qwen-hidden .chk, #view.qwen-hidden #selChk,
   #view.qwen-hidden [data-op="sugg"], #view.qwen-hidden [data-op="sugg-ins"] { display:none; }
   #selChk div.chk { border:0; margin:0; padding:0; }
   #selChk div.chk + div.chk { margin-top:6px; padding-top:6px; border-top:1px dashed #f3d2d2; }
-  #selChk > button { margin-top:6px; font-size:12px; }
-  #selChk > button:hover { background:#dcfce7; border-color:#16a34a; color:#166534; }
+  #selChk button { font-size:12px; }
+  #selChk button:hover { background:#dcfce7; border-color:#16a34a; color:#166534; }
   /* in-place text correction on the timeline (double-click a caption in edit mode) */
   .tl .seg.editing { overflow:visible; z-index:5; }
   .tl .seg input.tled { position:absolute; top:0; bottom:0; left:0; width:max(100%, 320px); z-index:6; font:13px system-ui, sans-serif;
@@ -287,7 +287,8 @@
   /* Task / sub-task check verdicts (only the ones judged wrong) */
   .badge.chk { background:#fee2e2; color:var(--bad); }
   div.chk { font-size:12px; color:var(--bad); margin-top:4px; font-weight:400; border-left:3px solid var(--bad); padding:2px 0 2px 8px; }
-  .chk .saw { color:var(--muted); }
+  .chk .chk-head { display:flex; align-items:baseline; gap:4px 12px; flex-wrap:wrap; }
+  .chk .saw { flex:1 1 200px; min-width:0; color:var(--muted); overflow-wrap:anywhere; }
   /* Qwen's suggestion as a word diff against the text it judged */
   .chk .df { display:grid; grid-template-columns:auto 1fr; gap:2px 8px; margin:3px 0; color:var(--fg); font-size:13px; }
   .chk .df .k { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding-top:3px; }
@@ -404,7 +405,7 @@
     <li>The timeline has one lane per level: 1 instruction, 2 sub-task (where available), 3 atomic. Click a caption to select it and jump to its
       start; click or drag the ruler to scrub; − / fit / + (left of the ruler) zoom, down to 0.1 s ticks.</li>
     <li>The selected annotation follows the playhead: atomic caption, then sub-task, then instruction when timed captions are absent.
-      Use <b>selected annotation</b> above the video to show or hide this area. Edits update it, the timeline, and video captions together.
+      Click a timeline or table caption to edit that caption; scrubbing or playback returns to the playhead. Edits update it, the timeline, and video captions together.
       Qwen's check notes show flagged captions; the table below lists every caption under its sub-task.</li>
     <li><kbd>Enter</kbd> pauses and opens the selected annotation for editing, enabling Edit mode when needed. <kbd>↑</kbd> moves the
       editor to its sub-task, then instruction; missing sub-tasks are skipped. <kbd>Enter</kbd> or <kbd>Esc</kbd> leaves the text field.
@@ -508,7 +509,6 @@
       <span><kbd>c</kbd></span><span>cut at the playhead</span>
       <span><kbd>e</kbd></span><span>trim current caption's end to playhead</span>
       <span><kbd>p</kbd></span><span>extend previous caption to playhead; move current start if needed</span>
-      <span><kbd>o</kbd></span><span>end → playhead, then the next caption</span>
       <span><kbd>⌫</kbd></span><span>delete</span>
       <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>⇧Z</kbd></span><span>undo / redo</span>
       <span><kbd>Ctrl</kbd>+<kbd>S</kbd></span><span>save</span></div>
@@ -780,13 +780,15 @@ function renderView(e, d, t0, sel0) {
   // a check verdict under its line: error type, suggested text, what the blind pass saw
   // (the task verdict's suggestion carries the row's "name: " prefix, the text it judged does not). `text` is the
   // line as it stands: equal to the suggestion when the fix is already in (EgoDex rows ship with it applied).
-  const note = (c, text, who = '') => {
+  const note = (c, text, who = '', target = null) => {
     if (!c) return '';
     const done = text === c.new;
     const [o, n] = wdiff(c.old || '', c.task_name && c.new.startsWith(`${c.task_name}: `) ? c.new.slice(c.task_name.length + 2) : c.new);
-    return `<div class="chk">⚑ Qwen check${who ? ` on ${who}` : ''} · <b>${esc(c.error)}</b>${done ? ' · fix applied' : ''}
-      <div class="df"><span class="k">original</span><span>${o}</span><span class="k">${done ? 'Qwen fix' : 'suggested'}</span><span>${n}</span></div>
-      ${c.saw ? `<span class="saw">saw: ${esc(c.saw)}</span>` : ''}</div>`;
+    return `<div class="chk"><div class="chk-head"><span>⚑ Qwen check${who ? ` on ${who}` : ''} · <b>${esc(c.error)}</b>${done ? ' · fix applied' : ''}</span>
+      ${c.saw ? `<span class="saw">saw: ${esc(c.saw)}</span>` : ''}
+      ${EDIT && target && !done ? `<button data-op="${target.l === 'ins' ? 'sugg-ins' : 'sugg'}" data-l="${target.l}" data-k="${target.k}"
+        title="Apply Qwen's suggestion to ${esc(who)}">Accept suggestion</button>` : ''}</div>
+      <div class="df"><span class="k">original</span><span>${o}</span><span class="k">${done ? 'Qwen fix' : 'suggested'}</span><span>${n}</span></div></div>`;
   };
   $('#view').innerHTML = `
     <div class="nav"><button id="prev" ${i <= 0 ? 'disabled' : ''}>◀ prev</button><button id="next" ${i >= FILTERED.length - 1 ? 'disabled' : ''}>next ▶</button><button id="rand">random</button>
@@ -954,7 +956,7 @@ function renderView(e, d, t0, sel0) {
     const ai = atoms.findIndex(a => t >= a.start && t < a.end);
     const active = ai >= 0 ? { l: 'atoms', k: ai } : si >= 0 ? { l: 'subs', k: si } : ins ? { l: 'ins', k: 0 } : null;
     const switched = active?.l !== PLAY?.l || active?.k !== PLAY?.k;
-    if (switched && active && active.l !== 'ins') SEL = active;
+    if (switched && !PANEL_LEVEL && active && active.l !== 'ins') SEL = active;
     PLAY = active;
     if (si !== lastSub || ai !== lastAtom || switched || returnToPlayhead || force === true) {
       lastSub = si; lastAtom = ai;
@@ -997,7 +999,7 @@ function renderView(e, d, t0, sel0) {
     follow();
     markSel();
   };
-  // Manual selection controls edit shortcuts; the caption card follows the lowest level at the playhead.
+  // Manual selection overrides the caption card until seeking or playback resumes.
   let SEL = sel0 || null;
   const cur = () => SEL && lv()[SEL.l][SEL.k] ? SEL : null;
   const lineName = (l, k) => l === 'ins' ? 'instruction' : `${l === 'subs' ? 'sub-task' : 'atomic line'} ${k + 1}`;
@@ -1009,7 +1011,7 @@ function renderView(e, d, t0, sel0) {
     });
     drawSel();
   };
-  const select = (l, k) => { SEL = { l, k }; markSel(); };
+  const select = (l, k) => { SEL = l === 'ins' ? null : { l, k }; PANEL_LEVEL = l; panelTime = v.currentTime; markSel(); };
   // the sub-task an atomic line overlaps most, -1 when none (the server's owner())
   const ownerOf = (subs, a) => { let best = -1, ov = 0;
     subs.forEach((s, j) => { const o = Math.min(a.end, s.end) - Math.max(a.start, s.start); if (o > ov) { ov = o; best = j; } });
@@ -1019,6 +1021,7 @@ function renderView(e, d, t0, sel0) {
   // the mode changes, so typing in it survives the redraws its own keystrokes cause.
   let selKey = '';
   const panelCaption = () => PANEL_LEVEL === 'ins' ? { l: 'ins', k: 0 }
+    : PANEL_LEVEL && cur()?.l === PANEL_LEVEL ? cur()
     : PANEL_LEVEL === 'subs' && lastSub >= 0 ? { l: 'subs', k: lastSub } : PLAY;
   const drawSel = () => {
     const box = $('#selbox'), s = panelCaption(), L = lv();
@@ -1042,7 +1045,7 @@ function renderView(e, d, t0, sel0) {
     const arr = s.l === 'ins' ? [] : L[s.l], x = s.l === 'ins' ? { start: 0, end: dur, text: L.ins } : arr[s.k];
     const text = s.l === 'subs' ? x.desc : x.text, next = arr[s.k + 1];
     if (s.l !== 'ins') {
-      const j = s.l === 'atoms' ? lastSub : -1;
+      const j = s.l === 'atoms' ? ownerOf(L.subs, x) : -1;
       const par = j >= 0 ? ['sub', `sub-task ${j + 1}`, L.subs[j].desc, L.subs[j], L.subs[j].check] : s.l === 'atoms' && hasSub
         ? ['sub', 'sub-task', '(outside every sub-task)', null, null] : ['ins', 'instruction', L.ins, { start: 0, end: dur }, d.check.task];
       $('#selP').className = `selrow par ${par[0]}`; $('#selPl').className = `chip ${par[0]}`; $('#selPl').textContent = par[1];
@@ -1051,9 +1054,9 @@ function renderView(e, d, t0, sel0) {
       $('#selPx').textContent = $('#selPx').title = par[2];
       // Qwen's verdicts on the parent and on the selected sub-task, with the accept button in edit mode
       const sc = s.l === 'subs' ? x.check : null;
-      $('#selChk').innerHTML = (par[4] ? note(par[4], par[2], par[1]) : '') + (sc ? note(sc, text, lineName(s.l, s.k))
-        + (EDIT && text !== sc.new ? '<button data-op="sugg" title="copy the suggested text into this sub-task">✓ use suggestion</button>' : '') : '');
-    } else $('#selChk').innerHTML = note(d.check.task, text, 'instruction');
+      $('#selChk').innerHTML = note(par[4], par[2], par[1], j >= 0 ? { l: 'subs', k: j } : { l: 'ins', k: 0 })
+        + note(sc, text, lineName(s.l, s.k), s);
+    } else $('#selChk').innerHTML = note(d.check.task, text, 'instruction', s);
     $('#selT').textContent = `${fmt(x.start)} – ${fmt(x.end)} · ${(x.end - x.start).toFixed(1)} s`;
     const dups = Object.entries(tagCount(text)).filter(([, n]) => n > 1);
     $('#selWarn').innerHTML = dups.length ? `⚠ duplicated ${dups.map(([t, n]) => `${esc(t)} ×${n}`).join(', ')}: keep one clause per hand<div class="prev">${hands(text, true)}</div>` : '';
@@ -1212,6 +1215,7 @@ function renderView(e, d, t0, sel0) {
 
   // one edit op on line k of level l ('subs' | 'atoms'); the row buttons and the keys both land here
   const run = (op, l, k) => {
+    if (op === 'sugg-ins') { saveState(); EDIT.ins = d.check.task.new; return changed(); }
     const arr = EDIT[l], x = arr[k], t = now(), name = lineName(l, k);
     if (op === 'go') { v.currentTime = x.start; v.play().catch(() => {}); return; }
     if (op === 'sugg') { saveState(); x.text = x.check.new; return changed(); }
@@ -1276,7 +1280,7 @@ function renderView(e, d, t0, sel0) {
     const b = ev.target.closest('button');
     if (!b) { const tr = ev.target.closest('tr[data-l]'); if (tr) select(tr.dataset.l, +tr.dataset.k); return; }
     const op = b.dataset.op; if (!op) return;
-    if (op === 'sugg-ins') { saveState(); EDIT.ins = d.check.task.new; return changed(); }
+    if (op === 'sugg-ins') return run(op, 'ins', 0);
     const tr = b.closest('tr[data-l]'), l = b.dataset.l || tr.dataset.l, k = tr ? +tr.dataset.k : undefined;
     if (tr) select(l, k);
     run(op, l, k);
@@ -1296,7 +1300,7 @@ function renderView(e, d, t0, sel0) {
   // #selbox: its buttons run on the selected line; its text field edits it (one undo step per focus, like the table's)
   $('#selbox').addEventListener('click', ev => {
     const b = ev.target.closest('button[data-op]'), s = panelCaption();
-    if (b && EDIT && s) run(b.dataset.op, s.l, s.k);
+    if (b && EDIT && s) run(b.dataset.op, b.dataset.l || s.l, b.dataset.k === undefined ? s.k : +b.dataset.k);
   });
   $('#selbox').addEventListener('focusin', ev => {
     if (EDIT && ev.target.id === 'selIn') {
@@ -1428,12 +1432,15 @@ function renderView(e, d, t0, sel0) {
   $('#guideBtn').addEventListener('click', () => guide(true));
   if (EDITON && canSave(e)) startEdit(); else { drawTable(); drawLanes(); }
   v.addEventListener('timeupdate', follow);
-  v.addEventListener('seeking', () => { PANEL_LEVEL = null; follow(true); });
+  v.addEventListener('seeking', () => follow(true));
   v.addEventListener('play', () => { PANEL_LEVEL = null; follow(true); });
   v.addEventListener('seeked', follow);
   v.addEventListener('loadedmetadata', follow);
   v.addEventListener('timeupdate', keepHead);
-  const seek = t => { v.currentTime = t; follow(); };
+  const seek = (t, selected) => {
+    PANEL_LEVEL = null; v.currentTime = t; follow();
+    if (selected) select(selected.l, selected.k);
+  };
   document.querySelectorAll('#view [data-source-t]').forEach(b => b.addEventListener('click', () => seek(clamp(+b.dataset.sourceT, 0, dur))));
   // Timeline mouse: a line seeks to its start; the ruler or a bare lane scrubs. In edit mode a line drags
   // (its body moves, an edge resizes) on the 0.1 s grid, taking a linked neighbour along (as the ⇤ / ⇥ buttons do).
@@ -1455,7 +1462,7 @@ function renderView(e, d, t0, sel0) {
     if (!seg) { seek(at(x0)); return track(cx => seek(at(cx)), () => {}); }
     const l = seg.dataset.sub !== undefined ? 'subs' : 'atoms', k = +(seg.dataset.sub ?? seg.dataset.atom);
     select(l, k);
-    if (!EDIT) return seek(lv()[l][k].start);
+    if (!EDIT) return seek(lv()[l][k].start, { l, k });
     const side = ev.target.classList.contains('hl') ? 'start' : ev.target.classList.contains('hr') ? 'end' : '';
     const arr = EDIT[l], x = arr[k], s0 = x.start, e0 = x.end, len = e0 - s0, prev = arr[k - 1], next = arr[k + 1];
     const lp = LINK && prev && Math.abs(prev.end - s0) < 1e-6, ln = LINK && next && Math.abs(next.start - e0) < 1e-6;
@@ -1477,7 +1484,7 @@ function renderView(e, d, t0, sel0) {
       if (ln) next.start = x.end;
       document.body.classList.add('tldrag');
       drawLanes();
-    }, () => { if (moved) changed(); else seek(x.start); });
+    }, () => { if (moved) changed(); else seek(x.start, { l, k }); });
   });
   // Edit mode: double-click a caption on the timeline to correct its text in place (Enter / click away keeps it, Esc drops it).
   $('.tlc').addEventListener('dblclick', ev => {
@@ -1648,7 +1655,8 @@ function renderView(e, d, t0, sel0) {
     if (mod || ev.altKey || (ev.key === 'Enter' && ev.target.matches('button'))) return false;
     if (key === 'e' || key === 'p') return done(() => {
       if (ev.repeat) return;
-      const l = PLAY && PLAY.l !== 'ins' ? PLAY.l : EDIT.atoms.length ? 'atoms' : 'subs', arr = EDIT[l];
+      const caption = panelCaption();
+      const l = caption && caption.l !== 'ins' ? caption.l : EDIT.atoms.length ? 'atoms' : 'subs', arr = EDIT[l];
       const k = arr.findIndex(x => v.currentTime >= x.start && v.currentTime < x.end);
       if (key === 'e') {
         if (k < 0) return msg('move the playhead inside a timed caption first', true);
@@ -1665,16 +1673,12 @@ function renderView(e, d, t0, sel0) {
       k < 0 ? msg(`the playhead is not inside a ${l === 'subs' ? 'sub-task' : 'atomic line'}`, true) : run('cut', l, k);
     });
     if (key === 'a') return done(() => need(k => run('add', l, k)));
-    if (key === 'o') return done(() => need(k => {
-      if (now() < arr[k].start + 0.1) return msg(`the playhead is at or before the start of ${lineName(l, k)}`, true);
-      run('e', l, k); if (EDIT[l][k + 1]) select(l, k + 1);
-    }));
     if (key === 'Backspace' || key === 'Delete') return done(() => need(k => run('del', l, k)));
     if (key === 'm' && ev.shiftKey) return done(() => need(k => run('merge', l, k)));
     if (key === 'Enter' || key === 'ArrowUp') return done(() => editCurrentCaption(key === 'ArrowUp'));
     if ((ev.code === 'BracketLeft' || ev.code === 'BracketRight') && !ev.shiftKey) return done(() => {
       const nk = s ? s.k + (ev.code === 'BracketRight' ? 1 : -1) : 0;
-      if (arr[nk]) { select(l, nk); seek(arr[nk].start); }
+      if (arr[nk]) seek(arr[nk].start, { l, k: nk });
     });
     return false;
   };
